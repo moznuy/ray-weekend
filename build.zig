@@ -12,6 +12,8 @@ pub fn build(b: *std.Build) void {
         .name = "ray-zig1",
         .root_module = exe_mod,
     });
+    const zstbi = b.dependency("zstbi", .{});
+    exe.root_module.addImport("zstbi", zstbi.module("root"));
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
