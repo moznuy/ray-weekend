@@ -73,10 +73,21 @@ pub const Vec3 = struct {
     }
 };
 
-pub const Point = Vec3;
-pub const Color = Vec3;
+pub const Point3 = Vec3;
+pub const Color3 = Vec3;
 
-pub inline fn set_color(data: []u8, color: Color, i: usize, j: usize, comptime image_width: usize, comptime num_components: u8) void {
+const Ray3 = struct {
+    orig: Point3,
+    dir: Vec3,
+
+    const Self = @This();
+
+    pub fn at(self: Self, t: f64) Point3 {
+        return self.orig.add(self.dir.scale(t));
+    }
+};
+
+pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime image_width: usize, comptime num_components: u8) void {
     const r = color.x();
     const g = color.y();
     const b = color.z();
@@ -111,7 +122,7 @@ pub fn main() !void {
     for (0..image_height) |i| {
         std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
         for (0..image_width) |j| {
-            const color = Color.init(.{ @as(f64, @floatFromInt(j)) / (image_width - 1), @as(f64, @floatFromInt(i)) / (image_height - 1), 0 });
+            const color = Color3.init(.{ @as(f64, @floatFromInt(j)) / (image_width - 1), @as(f64, @floatFromInt(i)) / (image_height - 1), 0 });
             set_color(&data, color, i, j, image_width, num_components);
         }
     }
