@@ -195,93 +195,88 @@ pub const Hittable = union(HittableTag) {
     }
 };
 
-pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_components: comptime_int, samples_per_pixel: comptime_int) type {
-    const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(image_width)) / aspect_ration);
-    const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
+pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_components: comptime_int, samples_per_pixel: comptime_int) type {
+    const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(_image_width)) / aspect_ration);
     const pixel_samples_scale: comptime_float = 1.0 / @as(comptime_float, @floatFromInt(samples_per_pixel));
 
     return struct {
-        image_height: comptime_int = image_height,
-        image_width: comptime_int = image_width,
-        num_components: comptime_int = num_components,
-        bytes_per_component: comptime_int = @sizeOf(u8),
+        center: Point3,
+        pixel00_loc: Point3,
+        pixel_delta_u: Vec3,
+        pixel_delta_v: Vec3,
+        rand: std.Random,
 
-        CameraType: type = struct {
-            center: Point3,
-            pixel00_loc: Point3,
-            pixel_delta_u: Vec3,
-            pixel_delta_v: Vec3,
-            rand: std.Random,
+        const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
+        const image_width: comptime_int = _image_width;
+        const num_components: comptime_int = _num_components;
+        const bytes_per_component: comptime_int = @sizeOf(u8);
 
-            const Self = @This();
+        const Self = @This();
 
-            pub fn render(camera: Self, world: Hittable, data: []u8) void {
-                for (0..image_height) |i| {
-                    std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
-                    for (0..image_width) |j| {
-                        var pixel_color = Color3.initN(0, 0, 0);
-                        inline for (0..samples_per_pixel) |_| {
-                            const ray = camera.get_ray(i, j);
-                            pixel_color.accumulate(ray_color(ray, world));
-                        }
-
-                        set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
+        pub fn render(camera: Self, world: Hittable, data: []u8) void {
+            for (0..image_height) |i| {
+                std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
+                for (0..image_width) |j| {
+                    var pixel_color = Color3.initN(0, 0, 0);
+                    inline for (0..samples_per_pixel) |_| {
+                        const ray = camera.get_ray(i, j);
+                        pixel_color.accumulate(ray_color(ray, world));
                     }
+
+                    set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
                 }
             }
+        }
 
-            pub fn init(rand: std.Random) Self {
-                const focal_length: comptime_float = 1.0;
-                const viewport_height: comptime_float = 2.0;
-                const viewport_width: comptime_float = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
+        pub fn init(rand: std.Random) Self {
+            const focal_length: comptime_float = 1.0;
+            const viewport_height: comptime_float = 2.0;
+            const viewport_width: comptime_float = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
 
-                const viewport_u = Vec3.initN(viewport_width, 0, 0);
-                const viewport_v = Vec3.initN(0, -viewport_height, 0);
+            const viewport_u = Vec3.initN(viewport_width, 0, 0);
+            const viewport_v = Vec3.initN(0, -viewport_height, 0);
 
-                const pixel_delta_u = viewport_u.scale(1.0 / @as(f64, @floatFromInt(image_width)));
-                const pixel_delta_v = viewport_v.scale(1.0 / @as(f64, @floatFromInt(image_height)));
+            const pixel_delta_u = viewport_u.scale(1.0 / @as(f64, @floatFromInt(image_width)));
+            const pixel_delta_v = viewport_v.scale(1.0 / @as(f64, @floatFromInt(image_height)));
 
-                const center = Point3.initN(0, 0, 0);
-                const viewport_upper_left = center
-                    .sub(Vec3.initN(0, 0, focal_length))
-                    .sub(viewport_u.scale(0.5))
-                    .sub(viewport_v.scale(0.5));
-                const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
+            const center = Point3.initN(0, 0, 0);
+            const viewport_upper_left = center
+                .sub(Vec3.initN(0, 0, focal_length))
+                .sub(viewport_u.scale(0.5))
+                .sub(viewport_v.scale(0.5));
+            const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
 
-                const camera = Self{
-                    .center = center,
-                    .pixel00_loc = pixel00_loc,
-                    .pixel_delta_u = pixel_delta_u,
-                    .pixel_delta_v = pixel_delta_v,
-                    .rand = rand,
-                };
-                return camera;
+            const camera = Self{
+                .center = center,
+                .pixel00_loc = pixel00_loc,
+                .pixel_delta_u = pixel_delta_u,
+                .pixel_delta_v = pixel_delta_v,
+                .rand = rand,
+            };
+            return camera;
+        }
+
+        pub fn get_ray(camera: Self, i: usize, j: usize) Ray3 {
+            const offset = sample_square(camera.rand);
+            const pixel_sample = camera.pixel00_loc
+                .add(camera.pixel_delta_u.scale(@as(f64, @floatFromInt(j)) + offset.x()))
+                .add(camera.pixel_delta_v.scale(@as(f64, @floatFromInt(i)) + offset.y()));
+            const ray_origin = camera.center;
+            const ray_direction = pixel_sample.sub(ray_origin);
+
+            return .{ .orig = ray_origin, .dir = ray_direction };
+        }
+
+        pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
+            if (hittable.hit(ray, Interval{ .min = 0, .max = std.math.floatMax(f64) })) |hit_record| {
+                return hit_record.normal.add(white).scale(0.5);
             }
 
-            pub fn get_ray(camera: Self, i: usize, j: usize) Ray3 {
-                const offset = sample_square(camera.rand);
-                const pixel_sample = camera.pixel00_loc
-                    .add(camera.pixel_delta_u.scale(@as(f64, @floatFromInt(j)) + offset.x()))
-                    .add(camera.pixel_delta_v.scale(@as(f64, @floatFromInt(i)) + offset.y()));
-                const ray_origin = camera.center;
-                const ray_direction = pixel_sample.sub(ray_origin);
+            const unit_direction = ray.dir.unit();
+            const a = 0.5 * (unit_direction.y() + 1.0);
 
-                return .{ .orig = ray_origin, .dir = ray_direction };
-            }
-
-            pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
-                if (hittable.hit(ray, Interval{ .min = 0, .max = std.math.floatMax(f64) })) |hit_record| {
-                    return hit_record.normal.add(white).scale(0.5);
-                }
-
-                const unit_direction = ray.dir.unit();
-                const a = 0.5 * (unit_direction.y() + 1.0);
-
-                return white.scale(1.0 - a).add(blue.scale(a));
-            }
-        },
-
-        const Helper = @This();
+            return white.scale(1.0 - a).add(blue.scale(a));
+        }
     };
 }
 
@@ -335,11 +330,11 @@ pub fn main() !void {
     const rand = prng.random();
 
     // Camera
-    const CameraHelper = Camera(image_width, aspect_ration, 3, samples_per_pixel){};
-    const camera = CameraHelper.CameraType.init(rand);
+    const CameraType = Camera(image_width, aspect_ration, 3, samples_per_pixel);
+    const camera = CameraType.init(rand);
 
     // Data
-    var data: [CameraHelper.image_width * CameraHelper.image_height * CameraHelper.num_components]u8 = undefined;
+    var data: [CameraType.image_width * CameraType.image_height * CameraType.num_components]u8 = undefined;
     @memset(&data, 0);
 
     // Render
@@ -351,10 +346,10 @@ pub fn main() !void {
     const image: zstbi.Image = .{
         .data = &data,
         .width = image_width,
-        .height = CameraHelper.image_height,
-        .num_components = CameraHelper.num_components,
-        .bytes_per_component = CameraHelper.bytes_per_component,
-        .bytes_per_row = image_width * CameraHelper.num_components * CameraHelper.bytes_per_component,
+        .height = CameraType.image_height,
+        .num_components = CameraType.num_components,
+        .bytes_per_component = CameraType.bytes_per_component,
+        .bytes_per_row = image_width * CameraType.num_components * CameraType.bytes_per_component,
         .is_hdr = false,
     };
     try image.writeToFile("image.png", .png);
