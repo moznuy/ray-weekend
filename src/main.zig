@@ -77,6 +77,8 @@ pub const Vec3 = struct {
 
 pub const Point3 = Vec3;
 pub const Color3 = Vec3;
+const white = Color3.initN(1, 1, 1);
+const blue = Color3.initN(0.5, 0.7, 1);
 
 pub const Ray3 = struct {
     orig: Point3,
@@ -186,6 +188,85 @@ pub const Hittable = union(HittableTag) {
     }
 };
 
+pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_components: comptime_int) type {
+    const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(image_width)) / aspect_ration);
+    const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
+
+    return struct {
+        image_height: comptime_int = image_height,
+        image_width: comptime_int = image_width,
+        num_components: comptime_int = num_components,
+        bytes_per_component: comptime_int = @sizeOf(u8),
+
+        CameraType: type = struct {
+            // aspect_ratio: comptime_float = undefined,
+            // image_width: comptime_int = image_width,
+            // image_height: comptime_int = image_height,
+            center: Point3 = undefined,
+            pixel00_loc: Point3 = undefined,
+            pixel_delta_u: Vec3 = undefined,
+            pixel_delta_v: Vec3 = undefined,
+
+            // num_components: comptime_int = num_components,
+            // bytes_per_component: comptime_int = @sizeOf(u8),
+
+            const Self = @This();
+
+            pub fn render(camera: Self, world: Hittable, data: []u8) void {
+                for (0..image_height) |i| {
+                    std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
+                    for (0..image_width) |j| {
+                        // const color = Color3.initN(@as(f64, @floatFromInt(j)) / (image_width - 1), @as(f64, @floatFromInt(i)) / (image_height - 1), 0);
+                        const pixel_center = camera.pixel00_loc.add(camera.pixel_delta_u.scale(@floatFromInt(j))).add(camera.pixel_delta_v.scale(@floatFromInt(i)));
+                        const ray_direction = pixel_center.sub(camera.center);
+                        const ray = Ray3{ .orig = camera.center, .dir = ray_direction };
+                        const color = ray_color(ray, world);
+                        set_color(data, color, i, j, image_width, num_components);
+                    }
+                }
+            }
+
+            pub fn init() Self {
+                const focal_length: comptime_float = 1.0;
+                const viewport_height: comptime_float = 2.0;
+                const viewport_width: comptime_float = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
+
+                const viewport_u = Vec3.initN(viewport_width, 0, 0);
+                const viewport_v = Vec3.initN(0, -viewport_height, 0);
+
+                const pixel_delta_u = viewport_u.scale(1.0 / @as(f64, @floatFromInt(image_width)));
+                const pixel_delta_v = viewport_v.scale(1.0 / @as(f64, @floatFromInt(image_height)));
+
+                const center = Point3.initN(0, 0, 0);
+                const viewport_upper_left = center.sub(Vec3.initN(0, 0, focal_length)).sub(viewport_u.scale(0.5)).sub(viewport_v.scale(0.5));
+                const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
+
+                const camera = Self{
+                    // .aspect_ratio = aspect_ration,
+                    // .image_width = image_width,
+                    // .image_height = image_height,
+                    .center = center,
+                    .pixel00_loc = pixel00_loc,
+                    .pixel_delta_u = pixel_delta_u,
+                    .pixel_delta_v = pixel_delta_v,
+                };
+                return camera;
+            }
+
+            pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
+                if (hittable.hit(ray, Interval{ .min = 0, .max = std.math.floatMax(f64) })) |hit_record| {
+                    return hit_record.normal.add(white).scale(0.5);
+                }
+
+                const unit_direction = ray.dir.unit();
+                const a = 0.5 * (unit_direction.y() + 1.0);
+
+                return white.scale(1.0 - a).add(blue.scale(a));
+            }
+        },
+    };
+}
+
 pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime image_width: usize, comptime num_components: u8) void {
     const r = color.x();
     const g = color.y();
@@ -200,20 +281,6 @@ pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime 
     data[(i * image_width + j) * num_components + 2] = bb;
 }
 
-pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
-    const white = Color3.initN(1, 1, 1);
-    const blue = Color3.initN(0.5, 0.7, 1);
-
-    if (hittable.hit(ray, Interval{ .min = 0, .max = std.math.floatMax(f64) })) |hit_record| {
-        return hit_record.normal.add(white).scale(0.5);
-    }
-
-    const unit_direction = ray.dir.unit();
-    const a = 0.5 * (unit_direction.y() + 1.0);
-
-    return white.scale(1.0 - a).add(blue.scale(a));
-}
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -221,58 +288,37 @@ pub fn main() !void {
         //fail test; can't try in defer as defer is executed after we return
         if (deinit_status == .leak) std.debug.print("Leak detected!", .{});
     }
-    zstbi.init(gpa.allocator());
-    defer zstbi.deinit();
 
     // Image
     const aspect_ration: comptime_float = 16.0 / 9.0;
     const image_width: comptime_int = 400;
-    const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(image_width)) / aspect_ration);
-    const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
 
     //World
     const _hittables = try std.ArrayList(Hittable).initCapacity(gpa.allocator(), 2);
+    defer _hittables.deinit();
     var world = Hittable{ .many = _hittables };
     world.many.appendAssumeCapacity(.{ .sphere = .{ .center = Point3.initN(0, 0, -1), .radius = 0.5 } });
     world.many.appendAssumeCapacity(.{ .sphere = .{ .center = Point3.initN(0, -100.5, -1), .radius = 100 } });
 
     // Camera
-    const focal_length: comptime_float = 1.0;
-    const viewport_height: comptime_float = 2.0;
-    const viewport_width: comptime_float = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
-    const camera_center = Point3.initN(0, 0, 0);
-    const viewport_u = Vec3.initN(viewport_width, 0, 0);
-    const viewport_v = Vec3.initN(0, -viewport_height, 0);
-    const pixel_delta_u = viewport_u.scale(1.0 / @as(f64, @floatFromInt(image_width)));
-    const pixel_delta_v = viewport_v.scale(1.0 / @as(f64, @floatFromInt(image_height)));
-    const viewport_upper_left = camera_center.sub(Vec3.initN(0, 0, focal_length)).sub(viewport_u.scale(0.5)).sub(viewport_v.scale(0.5));
-    const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
+    const CameraHelper = Camera(image_width, aspect_ration, 3){};
+    const camera = CameraHelper.CameraType.init();
 
     // Data
-    const num_components: comptime_int = 3;
-    const bytes_per_component = @sizeOf(u8);
-    var data: [image_width * image_height * num_components]u8 = undefined;
+    var data: [CameraHelper.image_width * CameraHelper.image_height * CameraHelper.num_components]u8 = undefined;
     @memset(&data, 0);
 
-    for (0..image_height) |i| {
-        std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
-        for (0..image_width) |j| {
-            // const color = Color3.initN(@as(f64, @floatFromInt(j)) / (image_width - 1), @as(f64, @floatFromInt(i)) / (image_height - 1), 0);
-            const pixel_center = pixel00_loc.add(pixel_delta_u.scale(@floatFromInt(j))).add(pixel_delta_v.scale(@floatFromInt(i)));
-            const ray_direction = pixel_center.sub(camera_center);
-            const ray = Ray3{ .orig = camera_center, .dir = ray_direction };
-            const color = ray_color(ray, world);
-            set_color(&data, color, i, j, image_width, num_components);
-        }
-    }
+    camera.render(world, &data);
 
+    zstbi.init(gpa.allocator());
+    defer zstbi.deinit();
     const image: zstbi.Image = .{
         .data = &data,
         .width = image_width,
-        .height = image_height,
-        .num_components = num_components,
-        .bytes_per_component = bytes_per_component,
-        .bytes_per_row = image_width * num_components * bytes_per_component,
+        .height = CameraHelper.image_height,
+        .num_components = CameraHelper.num_components,
+        .bytes_per_component = CameraHelper.bytes_per_component,
+        .bytes_per_row = image_width * CameraHelper.num_components * CameraHelper.bytes_per_component,
         .is_hdr = false,
     };
     try image.writeToFile("image.png", .png);
