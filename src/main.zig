@@ -103,12 +103,35 @@ pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime 
     data[(i * image_width + j) * num_components + 2] = bb;
 }
 
+pub fn hit_sphere(center: Point3, radius: f64, ray: Ray3) f64 {
+    const oc = center.sub(ray.orig);
+    const a = ray.dir.length_squred();
+    const h = ray.dir.dot(oc);
+    const c = oc.length_squred() - radius * radius;
+    const discriminant = h * h - a * c;
+
+    if (discriminant < 0) {
+        return -1.0;
+    } else {
+        return (h - @sqrt(discriminant)) / a;
+    }
+}
+
 pub fn ray_color(ray: Ray3) Color3 {
+    const white = Color3.initN(1, 1, 1);
+    const blue = Color3.initN(0.5, 0.7, 1);
+    // const red = Color3.initN(1, 0, 0);
+    const sphre_center = Point3.initN(0, 0, -1);
+
+    const t = hit_sphere(sphre_center, 0.5, ray);
+    if (t > 0.0) {
+        const n = ray.at(t).sub(sphre_center).unit();
+        return Color3.initN(n.x() + 1, n.y() + 1, n.z() + 1).scale(0.5);
+    }
+
     const unit_direction = ray.dir.unit();
     const a = 0.5 * (unit_direction.y() + 1.0);
 
-    const white = Color3.initN(1.0, 1.0, 1.0);
-    const blue = Color3.initN(0.5, 0.7, 1.0);
     return white.scale(1.0 - a).add(blue.scale(a));
 }
 
@@ -139,8 +162,6 @@ pub fn main() !void {
     const pixel_delta_v = viewport_v.scale(1.0 / @as(f64, @floatFromInt(image_height)));
     const viewport_upper_left = camera_center.sub(Vec3.initN(0, 0, focal_length)).sub(viewport_u.scale(0.5)).sub(viewport_v.scale(0.5));
     const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
-
-    std.debug.print("{} {}\n", .{ viewport_upper_left, pixel00_loc });
 
     // Data
     const num_components: comptime_int = 3;
