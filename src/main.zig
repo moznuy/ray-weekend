@@ -89,6 +89,27 @@ pub const Ray3 = struct {
     }
 };
 
+pub const Interval = struct {
+    min: f64,
+    max: f64,
+
+    const empty = Interval{ .min = std.math.inf(f64), .max = -std.math.inf(f64) };
+    const universe = Interval{ .min = -std.math.inf(f64), .max = std.math.inf(f64) };
+    const Self = @This();
+
+    pub fn size(self: Self) f64 {
+        return self.max - self.min;
+    }
+
+    pub fn contains(self: Self, x: f64) bool {
+        return self.min <= x and x <= self.max;
+    }
+
+    pub fn surrounds(self: Self, x: f64) bool {
+        return self.min < x and x < self.max;
+    }
+};
+
 pub const HitRecord = struct {
     p: Point3,
     normal: Vec3,
@@ -110,7 +131,7 @@ pub const Hittable = union(HittableTag) {
 
     const Self = @This();
 
-    pub fn hit(self: Self, ray: Ray3, ray_tmin: f64, ray_tmax: f64) ?HitRecord {
+    pub fn hit(self: Self, ray: Ray3, ray_t: Interval) ?HitRecord {
         switch (self) {
             .sphere => |sphere| {
                 const oc = sphere.center.sub(ray.orig);
@@ -126,9 +147,9 @@ pub const Hittable = union(HittableTag) {
                 const sqrtd = @sqrt(discriminant);
                 // Find the nearest root that lies in the acceptable range.
                 var root = (h - sqrtd) / a;
-                if (root <= ray_tmin or ray_tmax <= root) {
+                if (!ray_t.surrounds(root)) {
                     root = (h + sqrtd) / a;
-                    if (root <= ray_tmin or ray_tmax <= root) {
+                    if (!ray_t.surrounds(root)) {
                         return null;
                     }
                 }
@@ -149,10 +170,10 @@ pub const Hittable = union(HittableTag) {
             .many => |hittables| {
                 var result_hit: ?HitRecord = null;
                 // var hit_anything = false;
-                var closest_so_far = ray_tmax;
+                var closest_so_far = ray_t.max;
 
                 for (hittables.items) |hittable| {
-                    if (hittable.hit(ray, ray_tmin, closest_so_far)) |tmp_hit| {
+                    if (hittable.hit(ray, Interval{ .min = ray_t.min, .max = closest_so_far })) |tmp_hit| {
                         // hit_anything = true;
                         closest_so_far = tmp_hit.t;
                         result_hit = tmp_hit;
@@ -183,7 +204,7 @@ pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
     const white = Color3.initN(1, 1, 1);
     const blue = Color3.initN(0.5, 0.7, 1);
 
-    if (hittable.hit(ray, 0, std.math.floatMax(f64))) |hit_record| {
+    if (hittable.hit(ray, Interval{ .min = 0, .max = std.math.floatMax(f64) })) |hit_record| {
         return hit_record.normal.add(white).scale(0.5);
     }
 
