@@ -195,9 +195,10 @@ pub const Hittable = union(HittableTag) {
     }
 };
 
-pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_components: comptime_int) type {
+pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_components: comptime_int, samples_per_pixel: comptime_int) type {
     const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(image_width)) / aspect_ration);
     const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
+    const pixel_samples_scale: comptime_float = 1.0 / @as(comptime_float, @floatFromInt(samples_per_pixel));
 
     return struct {
         image_height: comptime_int = image_height,
@@ -209,10 +210,11 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
             // aspect_ratio: comptime_float = undefined,
             // image_width: comptime_int = image_width,
             // image_height: comptime_int = image_height,
-            center: Point3 = undefined,
-            pixel00_loc: Point3 = undefined,
-            pixel_delta_u: Vec3 = undefined,
-            pixel_delta_v: Vec3 = undefined,
+            center: Point3,
+            pixel00_loc: Point3,
+            pixel_delta_u: Vec3,
+            pixel_delta_v: Vec3,
+            rand: std.Random,
 
             // num_components: comptime_int = num_components,
             // bytes_per_component: comptime_int = @sizeOf(u8),
@@ -223,17 +225,22 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
                 for (0..image_height) |i| {
                     std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
                     for (0..image_width) |j| {
-                        // const color = Color3.initN(@as(f64, @floatFromInt(j)) / (image_width - 1), @as(f64, @floatFromInt(i)) / (image_height - 1), 0);
-                        const pixel_center = camera.pixel00_loc.add(camera.pixel_delta_u.scale(@floatFromInt(j))).add(camera.pixel_delta_v.scale(@floatFromInt(i)));
-                        const ray_direction = pixel_center.sub(camera.center);
-                        const ray = Ray3{ .orig = camera.center, .dir = ray_direction };
-                        const color = ray_color(ray, world);
-                        set_color(data, color, i, j, image_width, num_components);
+                        var pixel_color = Color3.initN(0, 0, 0);
+                        inline for (0..samples_per_pixel) |_| {
+                            const ray = camera.get_ray(i, j);
+                            pixel_color.accumulate(ray_color(ray, world));
+                        }
+
+                        // const pixel_center = camera.pixel00_loc.add(camera.pixel_delta_u.scale(@floatFromInt(j))).add(camera.pixel_delta_v.scale(@floatFromInt(i)));
+                        // const ray_direction = pixel_center.sub(camera.center);
+                        // const ray = Ray3{ .orig = camera.center, .dir = ray_direction };
+                        // const color = ray_color(ray, world);
+                        set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
                     }
                 }
             }
 
-            pub fn init() Self {
+            pub fn init(rand: std.Random) Self {
                 const focal_length: comptime_float = 1.0;
                 const viewport_height: comptime_float = 2.0;
                 const viewport_width: comptime_float = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
@@ -245,7 +252,10 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
                 const pixel_delta_v = viewport_v.scale(1.0 / @as(f64, @floatFromInt(image_height)));
 
                 const center = Point3.initN(0, 0, 0);
-                const viewport_upper_left = center.sub(Vec3.initN(0, 0, focal_length)).sub(viewport_u.scale(0.5)).sub(viewport_v.scale(0.5));
+                const viewport_upper_left = center
+                    .sub(Vec3.initN(0, 0, focal_length))
+                    .sub(viewport_u.scale(0.5))
+                    .sub(viewport_v.scale(0.5));
                 const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
 
                 const camera = Self{
@@ -256,8 +266,20 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
                     .pixel00_loc = pixel00_loc,
                     .pixel_delta_u = pixel_delta_u,
                     .pixel_delta_v = pixel_delta_v,
+                    .rand = rand,
                 };
                 return camera;
+            }
+
+            pub fn get_ray(camera: Self, i: usize, j: usize) Ray3 {
+                const offset = sample_square(camera.rand);
+                const pixel_sample = camera.pixel00_loc
+                    .add(camera.pixel_delta_u.scale(@as(f64, @floatFromInt(j)) + offset.x()))
+                    .add(camera.pixel_delta_v.scale(@as(f64, @floatFromInt(i)) + offset.y()));
+                const ray_origin = camera.center;
+                const ray_direction = pixel_sample.sub(ray_origin);
+
+                return .{ .orig = ray_origin, .dir = ray_direction };
             }
 
             pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
@@ -271,12 +293,19 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
                 return white.scale(1.0 - a).add(blue.scale(a));
             }
         },
+
+        const Helper = @This();
     };
 }
 
 pub inline fn random_double_range(rand: std.Random, min: f64, max: f64) f64 {
     // Returns a random real in [min,max).
     return min + (max - min) * rand.float(f64);
+}
+
+pub fn sample_square(rand: std.Random) Vec3 {
+    // Returns the vector to a random point in the [-.5,-.5]-[+.5,+.5] unit square.
+    return Vec3.initN(rand.float(f64) - 0.5, rand.float(f64) - 0.5, 0);
 }
 
 pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime image_width: usize, comptime num_components: u8) void {
@@ -305,6 +334,7 @@ pub fn main() !void {
     // Image
     const aspect_ration: comptime_float = 16.0 / 9.0;
     const image_width: comptime_int = 400;
+    const samples_per_pixel: comptime_int = 100;
 
     //World
     const _hittables = try std.ArrayList(Hittable).initCapacity(gpa.allocator(), 2);
@@ -313,18 +343,17 @@ pub fn main() !void {
     world.many.appendAssumeCapacity(.{ .sphere = .{ .center = Point3.initN(0, 0, -1), .radius = 0.5 } });
     world.many.appendAssumeCapacity(.{ .sphere = .{ .center = Point3.initN(0, -100.5, -1), .radius = 100 } });
 
+    // Random
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    const rand = prng.random();
+
     // Camera
-    const CameraHelper = Camera(image_width, aspect_ration, 3){};
-    const camera = CameraHelper.CameraType.init();
+    const CameraHelper = Camera(image_width, aspect_ration, 3, samples_per_pixel){};
+    const camera = CameraHelper.CameraType.init(rand);
 
     // Data
     var data: [CameraHelper.image_width * CameraHelper.image_height * CameraHelper.num_components]u8 = undefined;
     @memset(&data, 0);
-
-    // Random
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
-    const rand = prng.random();
-    std.debug.print("{}\n", .{random_double_range(rand, 1, 100)});
 
     // Render
     camera.render(world, &data);
