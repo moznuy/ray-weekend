@@ -207,17 +207,11 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
         bytes_per_component: comptime_int = @sizeOf(u8),
 
         CameraType: type = struct {
-            // aspect_ratio: comptime_float = undefined,
-            // image_width: comptime_int = image_width,
-            // image_height: comptime_int = image_height,
             center: Point3,
             pixel00_loc: Point3,
             pixel_delta_u: Vec3,
             pixel_delta_v: Vec3,
             rand: std.Random,
-
-            // num_components: comptime_int = num_components,
-            // bytes_per_component: comptime_int = @sizeOf(u8),
 
             const Self = @This();
 
@@ -231,10 +225,6 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
                             pixel_color.accumulate(ray_color(ray, world));
                         }
 
-                        // const pixel_center = camera.pixel00_loc.add(camera.pixel_delta_u.scale(@floatFromInt(j))).add(camera.pixel_delta_v.scale(@floatFromInt(i)));
-                        // const ray_direction = pixel_center.sub(camera.center);
-                        // const ray = Ray3{ .orig = camera.center, .dir = ray_direction };
-                        // const color = ray_color(ray, world);
                         set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
                     }
                 }
@@ -259,9 +249,6 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
                 const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
 
                 const camera = Self{
-                    // .aspect_ratio = aspect_ration,
-                    // .image_width = image_width,
-                    // .image_height = image_height,
                     .center = center,
                     .pixel00_loc = pixel00_loc,
                     .pixel_delta_u = pixel_delta_u,
