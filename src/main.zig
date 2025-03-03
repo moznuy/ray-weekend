@@ -78,7 +78,7 @@ pub const Vec3 = struct {
 pub const Point3 = Vec3;
 pub const Color3 = Vec3;
 
-const Ray3 = struct {
+pub const Ray3 = struct {
     orig: Point3,
     dir: Vec3,
 
@@ -86,6 +86,82 @@ const Ray3 = struct {
 
     pub fn at(self: Self, t: f64) Point3 {
         return self.orig.add(self.dir.scale(t));
+    }
+};
+
+pub const HitRecord = struct {
+    p: Point3,
+    normal: Vec3,
+    t: f64,
+    front_face: bool,
+};
+
+pub const HittableTag = enum {
+    sphere,
+    many,
+};
+
+pub const Hittable = union(HittableTag) {
+    sphere: struct {
+        center: Point3,
+        radius: f64, // todo: fmax(0, r) for setter?
+    },
+    many: std.ArrayList(Hittable),
+
+    const Self = @This();
+
+    pub fn hit(self: Self, ray: Ray3, ray_tmin: f64, ray_tmax: f64) ?HitRecord {
+        switch (self) {
+            .sphere => |sphere| {
+                const oc = sphere.center.sub(ray.orig);
+                const a = ray.dir.length_squred();
+                const h = ray.dir.dot(oc);
+                const c = oc.length_squred() - sphere.radius * sphere.radius;
+
+                const discriminant = h * h - a * c;
+                if (discriminant < 0) {
+                    return null;
+                }
+
+                const sqrtd = @sqrt(discriminant);
+                // Find the nearest root that lies in the acceptable range.
+                var root = (h - sqrtd) / a;
+                if (root <= ray_tmin or ray_tmax <= root) {
+                    root = (h + sqrtd) / a;
+                    if (root <= ray_tmin or ray_tmax <= root) {
+                        return null;
+                    }
+                }
+
+                const t = root;
+                const p = ray.at(root);
+                const outward_normal = p.sub(sphere.center).scale(1 / sphere.radius);
+                const front_face = ray.dir.dot(outward_normal) < 0;
+                const normal = if (front_face) outward_normal else outward_normal.negate();
+
+                return .{
+                    .t = t,
+                    .p = p,
+                    .normal = normal,
+                    .front_face = front_face,
+                };
+            },
+            .many => |hittables| {
+                var result_hit: ?HitRecord = null;
+                // var hit_anything = false;
+                var closest_so_far = ray_tmax;
+
+                for (hittables.items) |hittable| {
+                    if (hittable.hit(ray, ray_tmin, closest_so_far)) |tmp_hit| {
+                        // hit_anything = true;
+                        closest_so_far = tmp_hit.t;
+                        result_hit = tmp_hit;
+                    }
+                }
+
+                return result_hit;
+            },
+        }
     }
 };
 
@@ -103,30 +179,12 @@ pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime 
     data[(i * image_width + j) * num_components + 2] = bb;
 }
 
-pub fn hit_sphere(center: Point3, radius: f64, ray: Ray3) f64 {
-    const oc = center.sub(ray.orig);
-    const a = ray.dir.length_squred();
-    const h = ray.dir.dot(oc);
-    const c = oc.length_squred() - radius * radius;
-    const discriminant = h * h - a * c;
-
-    if (discriminant < 0) {
-        return -1.0;
-    } else {
-        return (h - @sqrt(discriminant)) / a;
-    }
-}
-
-pub fn ray_color(ray: Ray3) Color3 {
+pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
     const white = Color3.initN(1, 1, 1);
     const blue = Color3.initN(0.5, 0.7, 1);
-    // const red = Color3.initN(1, 0, 0);
-    const sphre_center = Point3.initN(0, 0, -1);
 
-    const t = hit_sphere(sphre_center, 0.5, ray);
-    if (t > 0.0) {
-        const n = ray.at(t).sub(sphre_center).unit();
-        return Color3.initN(n.x() + 1, n.y() + 1, n.z() + 1).scale(0.5);
+    if (hittable.hit(ray, 0, std.math.floatMax(f64))) |hit_record| {
+        return hit_record.normal.add(white).scale(0.5);
     }
 
     const unit_direction = ray.dir.unit();
@@ -150,6 +208,12 @@ pub fn main() !void {
     const image_width: comptime_int = 400;
     const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(image_width)) / aspect_ration);
     const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
+
+    //World
+    const _hittables = try std.ArrayList(Hittable).initCapacity(gpa.allocator(), 2);
+    var world = Hittable{ .many = _hittables };
+    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = Point3.initN(0, 0, -1), .radius = 0.5 } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = Point3.initN(0, -100.5, -1), .radius = 100 } });
 
     // Camera
     const focal_length: comptime_float = 1.0;
@@ -175,7 +239,8 @@ pub fn main() !void {
             // const color = Color3.initN(@as(f64, @floatFromInt(j)) / (image_width - 1), @as(f64, @floatFromInt(i)) / (image_height - 1), 0);
             const pixel_center = pixel00_loc.add(pixel_delta_u.scale(@floatFromInt(j))).add(pixel_delta_v.scale(@floatFromInt(i)));
             const ray_direction = pixel_center.sub(camera_center);
-            const color = ray_color(.{ .orig = camera_center, .dir = ray_direction });
+            const ray = Ray3{ .orig = camera_center, .dir = ray_direction };
+            const color = ray_color(ray, world);
             set_color(&data, color, i, j, image_width, num_components);
         }
     }
