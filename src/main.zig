@@ -97,6 +97,7 @@ pub const Interval = struct {
 
     const empty = Interval{ .min = std.math.inf(f64), .max = -std.math.inf(f64) };
     const universe = Interval{ .min = -std.math.inf(f64), .max = std.math.inf(f64) };
+    const intensity = Interval{ .min = 0, .max = 0.999 };
     const Self = @This();
 
     pub fn size(self: Self) f64 {
@@ -109,6 +110,12 @@ pub const Interval = struct {
 
     pub fn surrounds(self: Self, x: f64) bool {
         return self.min < x and x < self.max;
+    }
+
+    pub fn clamp(self: Self, x: f64) f64 {
+        if (x < self.min) return self.min;
+        if (x > self.max) return self.max;
+        return x;
     }
 };
 
@@ -267,14 +274,19 @@ pub fn Camera(image_width: comptime_int, aspect_ration: comptime_float, num_comp
     };
 }
 
+pub inline fn random_double_range(rand: std.Random, min: f64, max: f64) f64 {
+    // Returns a random real in [min,max).
+    return min + (max - min) * rand.float(f64);
+}
+
 pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime image_width: usize, comptime num_components: u8) void {
     const r = color.x();
     const g = color.y();
     const b = color.z();
 
-    const rb: u8 = @intFromFloat(255.999 * r);
-    const gb: u8 = @intFromFloat(255.999 * g);
-    const bb: u8 = @intFromFloat(255.999 * b);
+    const rb: u8 = @intFromFloat(256 * Interval.intensity.clamp(r));
+    const gb: u8 = @intFromFloat(256 * Interval.intensity.clamp(g));
+    const bb: u8 = @intFromFloat(256 * Interval.intensity.clamp(b));
 
     data[(i * image_width + j) * num_components] = rb;
     data[(i * image_width + j) * num_components + 1] = gb;
@@ -282,6 +294,7 @@ pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime 
 }
 
 pub fn main() !void {
+    // Allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
         const deinit_status = gpa.deinit();
@@ -308,8 +321,15 @@ pub fn main() !void {
     var data: [CameraHelper.image_width * CameraHelper.image_height * CameraHelper.num_components]u8 = undefined;
     @memset(&data, 0);
 
+    // Random
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    const rand = prng.random();
+    std.debug.print("{}\n", .{random_double_range(rand, 1, 100)});
+
+    // Render
     camera.render(world, &data);
 
+    // Save
     zstbi.init(gpa.allocator());
     defer zstbi.deinit();
     const image: zstbi.Image = .{
