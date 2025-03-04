@@ -20,21 +20,52 @@ pub fn main() !void {
     const samples_per_pixel: comptime_int = 100;
 
     // Materials
-    const material_ground = material.Material{ .lambertian = .{ .albedo = linear.Color3.initN(0.8, 0.8, 0.0) } };
-    const material_center = material.Material{ .lambertian = .{ .albedo = linear.Color3.initN(0.1, 0.2, 0.5) } };
-    const material_left = material.Material{ .dielectric = .{ .refraction_index = 1.5 } };
-    const material_bubble = material.Material{ .dielectric = .{ .refraction_index = 1.0 / 1.5 } };
-    const material_right = material.Material{ .metal = .{ .albedo = linear.Color3.initN(0.8, 0.6, 0.2), .fuzz = 1.0 } };
+    const material_ground = material.Material{ .lambertian = .{
+        .albedo = linear.Color3.initN(0.8, 0.8, 0.0),
+    } };
+    const material_center = material.Material{ .lambertian = .{
+        .albedo = linear.Color3.initN(0.1, 0.2, 0.5),
+    } };
+    const material_left = material.Material{ .dielectric = .{
+        .refraction_index = 1.5,
+    } };
+    const material_bubble = material.Material{
+        .dielectric = .{ .refraction_index = 1.0 / 1.5 },
+    };
+    const material_right = material.Material{
+        .metal = .{ .albedo = linear.Color3.initN(0.8, 0.6, 0.2), .fuzz = 1.0 },
+    };
 
     // World
     const _hittables = try std.ArrayList(ray.Hittable).initCapacity(gpa.allocator(), 5);
     defer _hittables.deinit();
+
     var world = ray.Hittable{ .many = _hittables };
-    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(0, -100.5, -1), .radius = 100, .mat = &material_ground } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(0, 0, -1.2), .radius = 0.5, .mat = &material_center } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(-1.0, 0, -1.0), .radius = 0.5, .mat = &material_left } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(-1.0, 0, -1.0), .radius = 0.4, .mat = &material_bubble } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(1.0, 0, -1.0), .radius = 0.5, .mat = &material_right } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{
+        .center = linear.Point3.initN(0, -100.5, -1),
+        .radius = 100,
+        .mat = &material_ground,
+    } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{
+        .center = linear.Point3.initN(0, 0, -1.2),
+        .radius = 0.5,
+        .mat = &material_center,
+    } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{
+        .center = linear.Point3.initN(-1.0, 0, -1.0),
+        .radius = 0.5,
+        .mat = &material_left,
+    } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{
+        .center = linear.Point3.initN(-1.0, 0, -1.0),
+        .radius = 0.4,
+        .mat = &material_bubble,
+    } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{
+        .center = linear.Point3.initN(1.0, 0, -1.0),
+        .radius = 0.5,
+        .mat = &material_right,
+    } });
 
     // Random
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
