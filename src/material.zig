@@ -8,9 +8,13 @@ pub const MaterialTag = enum {
 };
 
 pub const Material = union(MaterialTag) {
-    // Todo: ? struct {albedo: Color3}
-    lambertian: linear.Color3,
-    metal: linear.Color3,
+    lambertian: struct {
+        albedo: linear.Color3,
+    },
+    metal: struct {
+        albedo: linear.Color3,
+        fuzz: f64,
+    },
 
     const Self = @This();
 
@@ -20,21 +24,25 @@ pub const Material = union(MaterialTag) {
         // _ = hit_record;
         // _ = attenuation;
         switch (self) {
-            .lambertian => |albedo| {
+            .lambertian => |lambertian| {
                 var scatter_direction = hit_record.normal.add(linear.Vec3.random_unit_vector(rand));
                 // Catch degenerate scatter direction
                 if (scatter_direction.near_zero()) {
                     scatter_direction = hit_record.normal;
                 }
                 const scattered = ray.Ray3{ .orig = hit_record.p, .dir = scatter_direction };
-                attenuation.* = albedo;
+                attenuation.* = lambertian.albedo;
                 return scattered;
             },
-            .metal => |albedo| {
-                const reflected = ray_in.dir.reflect(hit_record.normal);
+            .metal => |metal| {
+                const reflected_base = ray_in.dir.reflect(hit_record.normal);
+                const reflected = reflected_base.unit().add(linear.Vec3.random_unit_vector(rand).scale(metal.fuzz));
                 const scattered = ray.Ray3{ .orig = hit_record.p, .dir = reflected };
-                attenuation.* = albedo;
-                return scattered;
+                attenuation.* = metal.albedo;
+                if (scattered.dir.dot(hit_record.normal) > 0) {
+                    return scattered;
+                }
+                return null;
             },
         }
 
