@@ -355,10 +355,19 @@ pub fn sample_square(rand: std.Random) Vec3 {
     return Vec3.initN(rand.float(f64) - 0.5, rand.float(f64) - 0.5, 0);
 }
 
-pub inline fn set_color(data: []u8, color: Color3, i: usize, j: usize, comptime image_width: usize, comptime num_components: u8) void {
-    const r = color.x();
-    const g = color.y();
-    const b = color.z();
+pub inline fn linear_to_gamma(color: Color3) Color3 {
+    return Color3.initN(
+        if (color.e[0] > 0) @sqrt(color.e[0]) else 0,
+        if (color.e[1] > 0) @sqrt(color.e[1]) else 0,
+        if (color.e[2] > 0) @sqrt(color.e[2]) else 0,
+    );
+}
+
+pub inline fn set_color(data: []u8, pixel_color: Color3, i: usize, j: usize, comptime image_width: usize, comptime num_components: u8) void {
+    const color_gamma_corrected = linear_to_gamma(pixel_color);
+    const r = color_gamma_corrected.x();
+    const g = color_gamma_corrected.y();
+    const b = color_gamma_corrected.z();
 
     const rb: u8 = @intFromFloat(256 * Interval.intensity.clamp(r));
     const gb: u8 = @intFromFloat(256 * Interval.intensity.clamp(g));
