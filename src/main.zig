@@ -22,7 +22,7 @@ pub fn main() !void {
     // Materials
     const material_ground = material.Material{ .lambertian = .{ .albedo = linear.Color3.initN(0.8, 0.8, 0.0) } };
     const material_center = material.Material{ .lambertian = .{ .albedo = linear.Color3.initN(0.1, 0.2, 0.5) } };
-    const material_left = material.Material{ .metal = .{ .albedo = linear.Color3.initN(0.8, 0.8, 0.8), .fuzz = 0.3 } };
+    const material_left = material.Material{ .dielectric = .{ .refraction_index = 1.5 } };
     const material_right = material.Material{ .metal = .{ .albedo = linear.Color3.initN(0.8, 0.6, 0.2), .fuzz = 1.0 } };
 
     // World

@@ -89,8 +89,16 @@ pub const Vec3 = struct {
         } };
     }
 
-    pub fn reflect(self: Self, other: Self) Self {
-        return self.sub(other.scale(2 * self.dot(other)));
+    pub fn reflect(self: Self, normal: Self) Self {
+        return self.sub(normal.scale(2 * self.dot(normal)));
+    }
+
+    pub fn refract(self: Self, normal: Self, etai_over_etat: f64) Self {
+        const cos_theta = @min(self.negate().dot(normal), 1.0);
+        const ray_out_perp = self.add(normal.scale(cos_theta)).scale(etai_over_etat);
+        // TODO: try 1-@abs(x) instead of @abs(1-x)
+        const ray_out_parallel = normal.scale(-@sqrt(@abs(1 - ray_out_perp.length_squred())));
+        return ray_out_perp.add(ray_out_parallel);
     }
 
     pub fn unit(self: Self) Self {

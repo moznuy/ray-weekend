@@ -5,6 +5,7 @@ const ray = @import("ray.zig");
 pub const MaterialTag = enum {
     lambertian,
     metal,
+    dielectric,
 };
 
 pub const Material = union(MaterialTag) {
@@ -14,6 +15,9 @@ pub const Material = union(MaterialTag) {
     metal: struct {
         albedo: linear.Color3,
         fuzz: f64,
+    },
+    dielectric: struct {
+        refraction_index: f64,
     },
 
     const Self = @This();
@@ -43,6 +47,16 @@ pub const Material = union(MaterialTag) {
                     return scattered;
                 }
                 return null;
+            },
+            .dielectric => |dielectric| {
+                attenuation.* = linear.Color3.initN(1, 1, 1);
+                const ri = if (hit_record.front_face) 1.0 / dielectric.refraction_index else dielectric.refraction_index;
+
+                const ray_in_unit = ray_in.dir.unit();
+                const refracted = ray_in_unit.refract(hit_record.normal, ri);
+
+                const scattered = ray.Ray3{ .orig = hit_record.p, .dir = refracted };
+                return scattered;
             },
         }
 
