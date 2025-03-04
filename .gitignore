@@ -1,3 +1,5 @@
+.devcontainer
+
 .zig-cache
 zig-out
 *.ppm
