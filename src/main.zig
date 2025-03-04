@@ -329,7 +329,9 @@ pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_co
                 return Color3.initN(0, 0, 0);
 
             if (hittable.hit(ray, Interval{ .min = 0.001, .max = std.math.floatMax(f64) })) |hit_record| {
-                const direction = Vec3.random_on_hemisphere(rand, hit_record.normal);
+                // const direction = Vec3.random_on_hemisphere(rand, hit_record.normal);
+                // Lambertian reflect distribution:
+                const direction = hit_record.normal.add(Vec3.random_unit_vector(rand));
                 const new_ray = Ray3{ .orig = hit_record.p, .dir = direction };
                 return ray_color(rand, depth - 1, new_ray, hittable).scale(0.5);
                 // return hit_record.normal.add(white).scale(0.5);
