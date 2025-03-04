@@ -53,9 +53,19 @@ pub const Material = union(MaterialTag) {
                 const ri = if (hit_record.front_face) 1.0 / dielectric.refraction_index else dielectric.refraction_index;
 
                 const ray_in_unit = ray_in.dir.unit();
-                const refracted = ray_in_unit.refract(hit_record.normal, ri);
+                const cos_theta = @min(ray_in_unit.negate().dot(hit_record.normal), 1.0);
+                const sin_theta = @sqrt(1.0 - cos_theta * cos_theta);
 
-                const scattered = ray.Ray3{ .orig = hit_record.p, .dir = refracted };
+                const cannot_refract = ri * sin_theta > 1.0;
+
+                const direction = blk: {
+                    if (cannot_refract or reflectance(cos_theta, ri) > rand.float(f64)) {
+                        break :blk ray_in_unit.reflect(hit_record.normal);
+                    } else {
+                        break :blk ray_in_unit.refract(hit_record.normal, ri);
+                    }
+                };
+                const scattered = ray.Ray3{ .orig = hit_record.p, .dir = direction };
                 return scattered;
             },
         }
@@ -63,3 +73,10 @@ pub const Material = union(MaterialTag) {
         return null;
     }
 };
+
+fn reflectance(cosine: f64, refraction_index: f64) f64 {
+    // Use Schlick's approximation for reflectance.
+    const r0 = (1 - refraction_index) / (1 + refraction_index);
+    const r0_squared = r0 * r0;
+    return r0_squared + (1 - r0_squared) * std.math.pow(f64, 1 - cosine, 5);
+}
