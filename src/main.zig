@@ -31,11 +31,19 @@ pub const Vec3 = struct {
     }
 
     pub fn negate(self: Self) Self {
-        return .{ .e = [_]f64{ -self.e[0], -self.e[1], -self.e[2] } };
+        return .{ .e = [_]f64{
+            -self.e[0],
+            -self.e[1],
+            -self.e[2],
+        } };
     }
 
     pub fn scale(self: Self, scalar: f64) Self {
-        return .{ .e = [_]f64{ self.e[0] * scalar, self.e[1] * scalar, self.e[2] * scalar } };
+        return .{ .e = [_]f64{
+            self.e[0] * scalar,
+            self.e[1] * scalar,
+            self.e[2] * scalar,
+        } };
     }
 
     pub fn length(self: Self) f64 {
@@ -47,15 +55,27 @@ pub const Vec3 = struct {
     }
 
     pub fn add(self: Self, other: Self) Self {
-        return .{ .e = [_]f64{ self.e[0] + other.e[0], self.e[1] + other.e[1], self.e[2] + other.e[2] } };
+        return .{ .e = [_]f64{
+            self.e[0] + other.e[0],
+            self.e[1] + other.e[1],
+            self.e[2] + other.e[2],
+        } };
     }
 
     pub fn sub(self: Self, other: Self) Self {
-        return .{ .e = [_]f64{ self.e[0] - other.e[0], self.e[1] - other.e[1], self.e[2] - other.e[2] } };
+        return .{ .e = [_]f64{
+            self.e[0] - other.e[0],
+            self.e[1] - other.e[1],
+            self.e[2] - other.e[2],
+        } };
     }
 
     pub fn mul(self: Self, other: Self) Self {
-        return .{ .e = [_]f64{ self.e[0] * other.e[0], self.e[1] * other.e[1], self.e[2] * other.e[2] } };
+        return .{ .e = [_]f64{
+            self.e[0] * other.e[0],
+            self.e[1] * other.e[1],
+            self.e[2] * other.e[2],
+        } };
     }
 
     pub fn dot(self: Self, other: Self) f64 {
@@ -72,6 +92,41 @@ pub const Vec3 = struct {
 
     pub fn unit(self: Self) Self {
         return self.scale(1 / self.length());
+    }
+
+    pub fn random(rand: std.Random) Self {
+        return .{ .e = [_]f64{
+            rand.float(f64),
+            rand.float(f64),
+            rand.float(f64),
+        } };
+    }
+
+    pub fn random_range(rand: std.Random, min: f64, max: f64) Self {
+        return .{ .e = [_]f64{
+            random_double_range(rand, min, max),
+            random_double_range(rand, min, max),
+            random_double_range(rand, min, max),
+        } };
+    }
+
+    pub fn random_unit_vector(rand: std.Random) Self {
+        while (true) {
+            const p = Self.random_range(rand, -1, 1);
+            const lensq = p.length_squred();
+            if (1e-160 < lensq and lensq <= 1) {
+                return p.scale(1 / @sqrt(lensq));
+            }
+        }
+    }
+
+    pub fn random_on_hemisphere(rand: std.Random, normal: Self) Self {
+        const on_unit_sphere = Self.random_unit_vector(rand);
+        if (on_unit_sphere.dot(normal) > 0.0) {
+            return on_unit_sphere;
+        } else {
+            return on_unit_sphere.negate();
+        }
     }
 };
 
@@ -198,6 +253,7 @@ pub const Hittable = union(HittableTag) {
 pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_components: comptime_int, samples_per_pixel: comptime_int) type {
     const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(_image_width)) / aspect_ration);
     const pixel_samples_scale: comptime_float = 1.0 / @as(comptime_float, @floatFromInt(samples_per_pixel));
+    const max_depth: comptime_int = 50;
 
     return struct {
         center: Point3,
@@ -213,14 +269,14 @@ pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_co
 
         const Self = @This();
 
-        pub fn render(camera: Self, world: Hittable, data: []u8) void {
+        pub fn render(camera: Self, rand: std.Random, world: Hittable, data: []u8) void {
             for (0..image_height) |i| {
                 std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
                 for (0..image_width) |j| {
                     var pixel_color = Color3.initN(0, 0, 0);
                     inline for (0..samples_per_pixel) |_| {
                         const ray = camera.get_ray(i, j);
-                        pixel_color.accumulate(ray_color(ray, world));
+                        pixel_color.accumulate(ray_color(rand, max_depth, ray, world));
                     }
 
                     set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
@@ -267,9 +323,16 @@ pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_co
             return .{ .orig = ray_origin, .dir = ray_direction };
         }
 
-        pub fn ray_color(ray: Ray3, hittable: Hittable) Color3 {
-            if (hittable.hit(ray, Interval{ .min = 0, .max = std.math.floatMax(f64) })) |hit_record| {
-                return hit_record.normal.add(white).scale(0.5);
+        pub fn ray_color(rand: std.Random, depth: u64, ray: Ray3, hittable: Hittable) Color3 {
+            // If we've exceeded the ray bounce limit, no more light is gathered.
+            if (depth <= 0)
+                return Color3.initN(0, 0, 0);
+
+            if (hittable.hit(ray, Interval{ .min = 0.001, .max = std.math.floatMax(f64) })) |hit_record| {
+                const direction = Vec3.random_on_hemisphere(rand, hit_record.normal);
+                const new_ray = Ray3{ .orig = hit_record.p, .dir = direction };
+                return ray_color(rand, depth - 1, new_ray, hittable).scale(0.5);
+                // return hit_record.normal.add(white).scale(0.5);
             }
 
             const unit_direction = ray.dir.unit();
@@ -338,7 +401,7 @@ pub fn main() !void {
     @memset(&data, 0);
 
     // Render
-    camera.render(world, &data);
+    camera.render(rand, world, &data);
 
     // Save
     zstbi.init(gpa.allocator());
