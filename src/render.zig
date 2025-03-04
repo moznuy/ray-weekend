@@ -4,6 +4,7 @@ const ray = @import("ray.zig");
 
 pub const white = linear.Color3.initN(1, 1, 1);
 pub const blue = linear.Color3.initN(0.5, 0.7, 1);
+pub const black = linear.Color3.initN(0, 0, 0);
 
 pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_components: comptime_int, samples_per_pixel: comptime_int) type {
     const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(_image_width)) / aspect_ration);
@@ -29,7 +30,7 @@ pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_co
                 std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
                 for (0..image_width) |j| {
                     var pixel_color = linear.Color3.initN(0, 0, 0);
-                    inline for (0..samples_per_pixel) |_| {
+                    for (0..samples_per_pixel) |_| {
                         const _ray = camera.get_ray(i, j);
                         pixel_color.accumulate(ray_color(rand, max_depth, _ray, world));
                     }
@@ -84,12 +85,13 @@ pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_co
                 return linear.Color3.initN(0, 0, 0);
 
             if (hittable.hit(_ray, ray.Interval{ .min = 0.001, .max = std.math.floatMax(f64) })) |hit_record| {
-                // const direction = Vec3.random_on_hemisphere(rand, hit_record.normal);
-                // Lambertian reflect distribution:
-                const direction = hit_record.normal.add(linear.Vec3.random_unit_vector(rand));
-                const new_ray = ray.Ray3{ .orig = hit_record.p, .dir = direction };
-                return ray_color(rand, depth - 1, new_ray, hittable).scale(0.5);
-                // return hit_record.normal.add(white).scale(0.5);
+                // TODO: consider zero
+                var attenuation: linear.Color3 = undefined;
+                const might_scattered = hit_record.mat.scatter(rand, _ray, hit_record, &attenuation);
+                if (might_scattered) |scattered| {
+                    return ray_color(rand, depth - 1, scattered, hittable).mul(attenuation);
+                }
+                return black;
             }
 
             const unit_direction = _ray.dir.unit();

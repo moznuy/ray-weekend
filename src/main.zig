@@ -1,6 +1,7 @@
 const std = @import("std");
 const linear = @import("linear.zig");
 const ray = @import("ray.zig");
+const material = @import("material.zig");
 const render = @import("render.zig");
 const zstbi = @import("zstbi");
 
@@ -18,12 +19,20 @@ pub fn main() !void {
     const image_width: comptime_int = 400;
     const samples_per_pixel: comptime_int = 100;
 
-    //World
-    const _hittables = try std.ArrayList(ray.Hittable).initCapacity(gpa.allocator(), 2);
+    // Materials
+    const material_ground = material.Material{ .lambertian = linear.Color3.initN(0.8, 0.8, 0.0) };
+    const material_center = material.Material{ .lambertian = linear.Color3.initN(0.1, 0.2, 0.5) };
+    const material_left = material.Material{ .metal = linear.Color3.initN(0.8, 0.8, 0.8) };
+    const material_right = material.Material{ .metal = linear.Color3.initN(0.8, 0.6, 0.2) };
+
+    // World
+    const _hittables = try std.ArrayList(ray.Hittable).initCapacity(gpa.allocator(), 4);
     defer _hittables.deinit();
     var world = ray.Hittable{ .many = _hittables };
-    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(0, 0, -1), .radius = 0.5 } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(0, -100.5, -1), .radius = 100 } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(0, -100.5, -1), .radius = 100, .mat = &material_ground } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(0, 0, -1.2), .radius = 0.5, .mat = &material_center } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(-1.0, 0, -1.0), .radius = 0.5, .mat = &material_left } });
+    world.many.appendAssumeCapacity(.{ .sphere = .{ .center = linear.Point3.initN(1.0, 0, -1.0), .radius = 0.5, .mat = &material_right } });
 
     // Random
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));

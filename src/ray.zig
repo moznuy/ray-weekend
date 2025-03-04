@@ -1,5 +1,6 @@
 const std = @import("std");
 const linear = @import("linear.zig");
+const material = @import("material.zig");
 
 pub const Interval = struct {
     min: f64,
@@ -44,6 +45,7 @@ pub const Ray3 = struct {
 pub const HitRecord = struct {
     p: linear.Point3,
     normal: linear.Vec3,
+    mat: *const material.Material,
     t: f64,
     front_face: bool,
 };
@@ -57,6 +59,7 @@ pub const Hittable = union(HittableTag) {
     sphere: struct {
         center: linear.Point3,
         radius: f64, // todo: fmax(0, r) for setter?
+        mat: *const material.Material,
     },
     many: std.ArrayList(Hittable),
 
@@ -94,6 +97,7 @@ pub const Hittable = union(HittableTag) {
                 return .{
                     .t = t,
                     .p = p,
+                    .mat = sphere.mat,
                     .normal = normal,
                     .front_face = front_face,
                 };

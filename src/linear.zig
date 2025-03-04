@@ -89,8 +89,17 @@ pub const Vec3 = struct {
         } };
     }
 
+    pub fn reflect(self: Self, other: Self) Self {
+        return self.sub(other.scale(2 * self.dot(other)));
+    }
+
     pub fn unit(self: Self) Self {
         return self.scale(1 / self.length());
+    }
+
+    pub fn near_zero(self: Self) bool {
+        const s = 1e-8;
+        return @abs(self.e[0]) < s and @abs(self.e[1]) < s and @abs(self.e[2]) < s;
     }
 
     pub fn random(rand: std.Random) Self {
