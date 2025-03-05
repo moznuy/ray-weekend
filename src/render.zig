@@ -54,7 +54,7 @@ pub fn Camera(
 
                 set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
             }
-            _ = lines_to_do.fetchSub(1, .release);
+            _ = lines_to_do.fetchSub(1, .monotonic);
         }
 
         pub fn init(

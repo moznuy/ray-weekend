@@ -80,9 +80,11 @@ fn final_scene(
         .mat_name = "ground",
     } });
 
-    const arb_point = linear.Point3.initN(4, 0.2, 0);
-    var a: i64 = -11;
+    const sphere1 = linear.Point3.initN(0, 1, 0);
+    const sphere2 = linear.Point3.initN(-4, 1, 0);
+    const sphere3 = linear.Point3.initN(4, 1, 0);
 
+    var a: i64 = -11;
     while (a < 11) : (a += 1) {
         var b: i64 = -11;
         while (b < 11) : (b += 1) {
@@ -93,7 +95,10 @@ fn final_scene(
                 @as(f64, @floatFromInt(b)) + 0.9 * rand.float(f64),
             );
 
-            if (center.sub(arb_point).length() <= 0.9) {
+            if (center.sub(sphere1).length() <= 1.2 or
+                center.sub(sphere2).length() <= 1.2 or
+                center.sub(sphere3).length() <= 1.2)
+            {
                 continue;
             }
 
@@ -121,7 +126,7 @@ fn final_scene(
         .refraction_index = 1.5,
     } });
     try world.many.append(.{ .sphere = .{
-        .center = linear.Point3.initN(0, 1, 0),
+        .center = sphere1,
         .radius = 1.0,
         .mat_name = "big-sphere1",
     } });
@@ -129,7 +134,7 @@ fn final_scene(
         .albedo = linear.Color3.initN(0.4, 0.2, 0.1),
     } });
     try world.many.append(.{ .sphere = .{
-        .center = linear.Point3.initN(-4, 1, 0),
+        .center = sphere2,
         .radius = 1.0,
         .mat_name = "big-sphere2",
     } });
@@ -138,7 +143,7 @@ fn final_scene(
         .fuzz = 0.0,
     } });
     try world.many.append(.{ .sphere = .{
-        .center = linear.Point3.initN(4, 1, 0),
+        .center = sphere3,
         .radius = 1.0,
         .mat_name = "big-sphere3",
     } });
@@ -146,7 +151,7 @@ fn final_scene(
 
 fn progress(lines_to_do: *std.atomic.Value(u64)) void {
     while (true) {
-        const todo = lines_to_do.load(.acquire);
+        const todo = lines_to_do.load(.monotonic);
         if (todo == 0) {
             break;
         }
@@ -188,11 +193,10 @@ pub fn main() !void {
         16.0 / 9.0,
         400,
         3,
-        100,
+        1000,
         50,
     );
     // const camera = CameraType.init(
-    //     rand,
     //     20,
     //     linear.Point3.initN(-2.0, 2.0, 1.0),
     //     linear.Point3.initN(0.0, 0.0, -1.0),
@@ -210,6 +214,7 @@ pub fn main() !void {
         10,
         &materials,
     );
+
     // Data
     var data: [CameraType.image_width * CameraType.image_height * CameraType.num_components]u8 = undefined;
     @memset(&data, 0);
@@ -219,7 +224,7 @@ pub fn main() !void {
     var pool: std.Thread.Pool = undefined;
     try pool.init(.{ .allocator = gpa.allocator() });
     var lines_to_do: std.atomic.Value(u64) = undefined;
-    lines_to_do.store(CameraType.image_height, .release);
+    lines_to_do.store(CameraType.image_height, .monotonic);
     const progress_thread = try std.Thread.spawn(.{}, progress, .{&lines_to_do});
     for (0..CameraType.image_height) |line| {
         try pool.spawn(CameraType.render, .{ camera, world, &data, line, &lines_to_do });
