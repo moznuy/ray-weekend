@@ -8,6 +8,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .sanitize_thread = target.result.os.tag == .linux,
     });
     const zstbi = b.dependency("zstbi", .{});
     exe.root_module.addImport("zstbi", zstbi.module("root"));

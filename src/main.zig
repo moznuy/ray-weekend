@@ -193,7 +193,7 @@ pub fn main() !void {
         16.0 / 9.0,
         400,
         3,
-        1000,
+        100,
         50,
     );
     // const camera = CameraType.init(
