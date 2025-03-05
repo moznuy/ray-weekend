@@ -9,7 +9,6 @@ pub const black = linear.Color3.initN(0, 0, 0);
 pub fn Camera(
     _image_width: comptime_int,
     aspect_ration: comptime_float,
-    vfov: comptime_float,
     _num_components: comptime_int,
     samples_per_pixel: comptime_int,
 ) type {
@@ -46,22 +45,32 @@ pub fn Camera(
             }
         }
 
-        pub fn init(rand: std.Random) Self {
-            const focal_length: comptime_float = 1.0;
-            const theta: comptime_float = std.math.degreesToRadians(vfov);
+        pub fn init(
+            rand: std.Random,
+            vfov: f64,
+            look_from: linear.Point3,
+            look_at: linear.Point3,
+            v_up: linear.Vec3,
+        ) Self {
+            const focal_length = look_from.sub(look_at).length();
+            const theta = std.math.degreesToRadians(vfov);
             const h = std.math.tan(theta / 2.0);
-            const viewport_height: comptime_float = 2.0 * h * focal_length;
-            const viewport_width: comptime_float = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
+            const viewport_height = 2.0 * h * focal_length;
+            const viewport_width = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
 
-            const viewport_u = linear.Vec3.initN(viewport_width, 0, 0);
-            const viewport_v = linear.Vec3.initN(0, -viewport_height, 0);
+            const w = look_from.sub(look_at).unit();
+            const u = v_up.cross(w).unit();
+            const v = w.cross(u);
+
+            const viewport_u = u.scale(viewport_width);
+            const viewport_v = v.scale(-viewport_height);
 
             const pixel_delta_u = viewport_u.scale(1.0 / @as(f64, @floatFromInt(image_width)));
             const pixel_delta_v = viewport_v.scale(1.0 / @as(f64, @floatFromInt(image_height)));
 
-            const center = linear.Point3.initN(0, 0, 0);
+            const center = look_from;
             const viewport_upper_left = center
-                .sub(linear.Vec3.initN(0, 0, focal_length))
+                .sub(w.scale(focal_length))
                 .sub(viewport_u.scale(0.5))
                 .sub(viewport_v.scale(0.5));
             const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
