@@ -6,7 +6,13 @@ pub const white = linear.Color3.initN(1, 1, 1);
 pub const blue = linear.Color3.initN(0.5, 0.7, 1);
 pub const black = linear.Color3.initN(0, 0, 0);
 
-pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_components: comptime_int, samples_per_pixel: comptime_int) type {
+pub fn Camera(
+    _image_width: comptime_int,
+    aspect_ration: comptime_float,
+    vfov: comptime_float,
+    _num_components: comptime_int,
+    samples_per_pixel: comptime_int,
+) type {
     const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(_image_width)) / aspect_ration);
     const pixel_samples_scale: comptime_float = 1.0 / @as(comptime_float, @floatFromInt(samples_per_pixel));
     const max_depth: comptime_int = 50;
@@ -42,7 +48,9 @@ pub fn Camera(_image_width: comptime_int, aspect_ration: comptime_float, _num_co
 
         pub fn init(rand: std.Random) Self {
             const focal_length: comptime_float = 1.0;
-            const viewport_height: comptime_float = 2.0;
+            const theta: comptime_float = std.math.degreesToRadians(vfov);
+            const h = std.math.tan(theta / 2.0);
+            const viewport_height: comptime_float = 2.0 * h * focal_length;
             const viewport_width: comptime_float = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
 
             const viewport_u = linear.Vec3.initN(viewport_width, 0, 0);
