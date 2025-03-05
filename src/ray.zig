@@ -55,6 +55,8 @@ pub const HittableTag = enum {
     many,
 };
 
+const err_mat = material.Material{ .lambertian = .{ .albedo = linear.Color3.initN(1, 0, 0) } };
+
 // TODO: Backed Hittable to remove StringHashMap.getPtr on every hit
 pub const Hittable = union(HittableTag) {
     sphere: struct {

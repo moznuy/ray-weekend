@@ -7,16 +7,23 @@ pub const white = linear.Color3.initN(1, 1, 1);
 pub const blue = linear.Color3.initN(0.5, 0.7, 1);
 pub const black = linear.Color3.initN(0, 0, 0);
 
+// TODO: investigate how to init threadlocal once per thread
+fn init_prng() void {
+    prng = std.Random.DefaultPrng.init(@as(u64, @intCast(std.time.milliTimestamp())) + std.Thread.Id * 1000);
+}
+// var init_prng_once = std.once(init_prng);
+threadlocal var prng: std.Random.DefaultPrng = undefined;
+threadlocal var init_prng_once = std.once(init_prng);
+
 pub fn Camera(
     aspect_ration: comptime_float,
     _image_width: comptime_int,
     _num_components: comptime_int,
     samples_per_pixel: comptime_int,
-    _max_depth: comptime_int,
+    max_depth: comptime_int,
 ) type {
     const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(_image_width)) / aspect_ration);
     const pixel_samples_scale: comptime_float = 1.0 / @as(comptime_float, @floatFromInt(samples_per_pixel));
-    const max_depth: comptime_int = _max_depth;
 
     return struct {
         center: linear.Point3,
@@ -36,19 +43,25 @@ pub fn Camera(
 
         const Self = @This();
 
-        pub fn render(camera: Self, rand: std.Random, world: ray.Hittable, data: []u8) void {
-            for (0..image_height) |i| {
-                std.debug.print("\rScanlines remaining: {d:04}", .{image_height - i});
-                for (0..image_width) |j| {
-                    var pixel_color = linear.Color3.initN(0, 0, 0);
-                    for (0..samples_per_pixel) |_| {
-                        const _ray = camera.get_ray(rand, i, j);
-                        pixel_color.accumulate(camera.ray_color(rand, max_depth, _ray, world));
-                    }
-
-                    set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
+        pub fn render(camera: Self, world: ray.Hittable, data: []u8, line: usize, lines_to_do: *std.atomic.Value(u64)) void {
+            // init_prng_once.call();
+            var prngg = std.Random.DefaultPrng.init(@as(u64, @intCast(std.time.milliTimestamp())) + line * 1000);
+            const rand = prngg.random();
+            // const lines_to_do = end_line - start_line;
+            // std.debug.print("Render from {} to {}; todo: {}\n", .{ start_line, end_line, lines_to_do });
+            const i = line;
+            // std.debug.print("\rScanlines remaining: {d:04}", .{lines_to_do - (i - start_line)});
+            for (0..image_width) |j| {
+                var pixel_color = linear.Color3.initN(0, 0, 0);
+                for (0..samples_per_pixel) |_| {
+                    const _ray = camera.get_ray(rand, i, j);
+                    pixel_color.accumulate(camera.ray_color(rand, max_depth, _ray, world));
                 }
+
+                set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
             }
+            _ = lines_to_do.fetchSub(1, .release);
+            // std.debug.print("\n", .{});
         }
 
         pub fn init(

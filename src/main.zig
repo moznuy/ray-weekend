@@ -66,9 +66,11 @@ fn sample_scene(
 fn final_scene(
     materials: *std.StringHashMap(material.Material),
     world: *ray.Hittable,
-    rand: std.Random,
     allocator: std.mem.Allocator,
 ) !void {
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    const rand = prng.random();
+
     try materials.put("ground", .{ .lambertian = .{
         .albedo = linear.Color3.initN(0.5, 0.5, 0.5),
     } });
@@ -142,11 +144,19 @@ fn final_scene(
     } });
 }
 
-pub fn main() !void {
-    // Random
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
-    const rand = prng.random();
+fn progress(lines_to_do: *std.atomic.Value(u64)) void {
+    while (true) {
+        const todo = lines_to_do.load(.acquire);
+        if (todo == 0) {
+            break;
+        }
+        std.debug.print("\rScanlines remaining: {d:04}", .{todo});
+        std.time.sleep(1 * std.time.ns_per_s);
+    }
+    std.debug.print("\n", .{});
+}
 
+pub fn main() !void {
     // Allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -168,7 +178,7 @@ pub fn main() !void {
 
     var mat_names_buf: [4096]u8 = undefined;
     var mat_name_allocator = std.heap.FixedBufferAllocator.init(&mat_names_buf);
-    try final_scene(&materials, &world, rand, mat_name_allocator.allocator());
+    try final_scene(&materials, &world, mat_name_allocator.allocator());
 
     materials.lockPointers();
     defer materials.unlockPointers();
@@ -176,9 +186,9 @@ pub fn main() !void {
     // Camera
     const CameraType = render.Camera(
         16.0 / 9.0,
-        400,
+        1200,
         3,
-        100,
+        500,
         50,
     );
     // const camera = CameraType.init(
@@ -200,13 +210,24 @@ pub fn main() !void {
         10,
         &materials,
     );
-
     // Data
     var data: [CameraType.image_width * CameraType.image_height * CameraType.num_components]u8 = undefined;
     @memset(&data, 0);
 
     // Render
-    camera.render(rand, world, &data);
+    // camera.render(world, &data, 0, 1);
+    var pool: std.Thread.Pool = undefined;
+    try pool.init(.{ .allocator = gpa.allocator() });
+    var lines_to_do: std.atomic.Value(u64) = undefined;
+    lines_to_do.store(CameraType.image_height, .release);
+    const progress_thread = try std.Thread.spawn(.{}, progress, .{&lines_to_do});
+    _ = progress_thread; // autofix
+    for (0..CameraType.image_height) |line| {
+        // TODO: spawn per line
+        try pool.spawn(CameraType.render, .{ camera, world, &data, line, &lines_to_do });
+    }
+    pool.deinit();
+    // progress_thread.join();
 
     // Save
     zstbi.init(gpa.allocator());
