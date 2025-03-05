@@ -8,17 +8,17 @@ pub const blue = linear.Color3.initN(0.5, 0.7, 1);
 pub const black = linear.Color3.initN(0, 0, 0);
 
 pub fn Camera(
-    _image_width: comptime_int,
     aspect_ration: comptime_float,
+    _image_width: comptime_int,
     _num_components: comptime_int,
     samples_per_pixel: comptime_int,
+    _max_depth: comptime_int,
 ) type {
     const image_height_tmp: comptime_int = @intFromFloat(@as(comptime_float, @floatFromInt(_image_width)) / aspect_ration);
     const pixel_samples_scale: comptime_float = 1.0 / @as(comptime_float, @floatFromInt(samples_per_pixel));
-    const max_depth: comptime_int = 50;
+    const max_depth: comptime_int = _max_depth;
 
     return struct {
-        rand: std.Random,
         center: linear.Point3,
         pixel00_loc: linear.Point3,
         pixel_delta_u: linear.Vec3,
@@ -52,7 +52,6 @@ pub fn Camera(
         }
 
         pub fn init(
-            rand: std.Random,
             vfov: f64,
             look_from: linear.Point3,
             look_at: linear.Point3,
@@ -89,7 +88,6 @@ pub fn Camera(
             const defocus_disk_v = v.scale(defocus_radius);
 
             const camera = Self{
-                .rand = rand,
                 .center = center,
                 .pixel00_loc = pixel00_loc,
                 .pixel_delta_u = pixel_delta_u,
@@ -106,7 +104,7 @@ pub fn Camera(
             // Construct a camera ray originating from the defocus disk and directed at a randomly
             // sampled point around the pixel location i, j.
 
-            const offset = sample_square(camera.rand);
+            const offset = sample_square(rand);
             const pixel_sample = camera.pixel00_loc
                 .add(camera.pixel_delta_u.scale(@as(f64, @floatFromInt(j)) + offset.x()))
                 .add(camera.pixel_delta_v.scale(@as(f64, @floatFromInt(i)) + offset.y()));
