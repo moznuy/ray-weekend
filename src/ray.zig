@@ -55,17 +55,18 @@ pub const HittableTag = enum {
     many,
 };
 
+// TODO: Backed Hittable to remove StringHashMap.getPtr on every hit
 pub const Hittable = union(HittableTag) {
     sphere: struct {
         center: linear.Point3,
         radius: f64, // todo: fmax(0, r) for setter?
-        mat: *const material.Material,
+        mat_name: []const u8,
     },
     many: std.ArrayList(Hittable),
 
     const Self = @This();
 
-    pub fn hit(self: Self, ray: Ray3, ray_t: Interval) ?HitRecord {
+    pub fn hit(self: Self, materials: *const std.StringHashMap(material.Material), ray: Ray3, ray_t: Interval) ?HitRecord {
         switch (self) {
             .sphere => |sphere| {
                 const oc = sphere.center.sub(ray.orig);
@@ -97,7 +98,7 @@ pub const Hittable = union(HittableTag) {
                 return .{
                     .t = t,
                     .p = p,
-                    .mat = sphere.mat,
+                    .mat = materials.getPtr(sphere.mat_name) orelse @panic("Material not found"),
                     .normal = normal,
                     .front_face = front_face,
                 };
@@ -108,7 +109,7 @@ pub const Hittable = union(HittableTag) {
                 var closest_so_far = ray_t.max;
 
                 for (hittables.items) |hittable| {
-                    if (hittable.hit(ray, Interval{ .min = ray_t.min, .max = closest_so_far })) |tmp_hit| {
+                    if (hittable.hit(materials, ray, Interval{ .min = ray_t.min, .max = closest_so_far })) |tmp_hit| {
                         // hit_anything = true;
                         closest_so_far = tmp_hit.t;
                         result_hit = tmp_hit;

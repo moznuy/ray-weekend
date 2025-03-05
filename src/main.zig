@@ -7,7 +7,7 @@ const zstbi = @import("zstbi");
 
 fn sample_scene(
     materials: *std.StringHashMap(material.Material),
-    world_hittables: *ray.Hittable,
+    world: *ray.Hittable,
 ) !void {
     try materials.put("ground", .{
         .lambertian = .{
@@ -36,34 +36,80 @@ fn sample_scene(
         },
     });
 
-    try world_hittables.many.append(.{ .sphere = .{
+    try world.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(0, -100.5, -1),
         .radius = 100,
-        .mat = materials.getPtr("ground") orelse unreachable,
+        .mat_name = "ground",
     } });
-    try world_hittables.many.append(.{ .sphere = .{
+    try world.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(0, 0, -1.2),
         .radius = 0.5,
-        .mat = materials.getPtr("center") orelse unreachable,
+        .mat_name = "center",
     } });
-    try world_hittables.many.append(.{ .sphere = .{
+    try world.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(-1.0, 0, -1.0),
         .radius = 0.5,
-        .mat = materials.getPtr("left") orelse unreachable,
+        .mat_name = "left",
     } });
-    try world_hittables.many.append(.{ .sphere = .{
+    try world.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(-1.0, 0, -1.0),
         .radius = 0.4,
-        .mat = materials.getPtr("bubble") orelse unreachable,
+        .mat_name = "bubble",
     } });
-    try world_hittables.many.append(.{ .sphere = .{
+    try world.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(1.0, 0, -1.0),
         .radius = 0.5,
-        .mat = materials.getPtr("right") orelse unreachable,
+        .mat_name = "right",
     } });
 }
 
+// fn final_scene(
+//     materials: *std.StringHashMap(material.Material),
+//     world: *ray.Hittable,
+//     rand: std.Random,
+// ) !void {
+//     try materials.put("ground", .{ .lambertian = .{
+//         .albedo = linear.Color3.initN(0.5, 0.5, 0.5),
+//     } });
+//     try world.many.append(.{ .sphere = .{
+//         .center = linear.Point3.initN(0, -1000, 0),
+//         .radius = 1000,
+//         .mat = materials.getPtr("ground") orelse unreachable,
+//     } });
+
+//     const arb_point = linear.Point3.initN(4, 0.2, 0);
+//     var a: i64 = -11;
+//     var buff: u8[20]
+//     while (a < 11) : (a += 1) {
+//         var b: i64 = -11;
+//         while (b < 11) : (b += 1) {
+//             const choose_mat = rand.float(f64);
+//             const center = linear.Point3.initN(
+//                 @as(f64, @floatFromInt(a)) + 0.9 * rand.float(f64),
+//                 0.2,
+//                 @as(f64, @floatFromInt(b)) + 0.9 * rand.float(f64),
+//             );
+
+//             if (center.sub(arb_point).length() <= 0.9) {
+//                 continue;
+//             }
+
+//             if (choose_mat < 0.8) {
+//                 // diffuse
+//             } else if (choose_mat < 0.95) {
+//                 //metal
+//             } else {
+//                 //glass
+//             }
+//         }
+//     }
+// }
+
 pub fn main() !void {
+    // Random
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    const rand = prng.random();
+
     // Allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -86,10 +132,9 @@ pub fn main() !void {
     defer _hittables.deinit();
     var world = ray.Hittable{ .many = _hittables };
     try sample_scene(&materials, &world);
-
-    // Random
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
-    const rand = prng.random();
+    materials.lockPointers();
+    defer materials.unlockPointers();
+    // try final_scene(&materials, &world, rand);
 
     // Camera
     const CameraType = render.Camera(
@@ -106,6 +151,7 @@ pub fn main() !void {
         linear.Vec3.initN(0.0, 1.0, 0.0),
         10.0,
         3.4,
+        &materials,
     );
 
     // Data

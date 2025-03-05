@@ -1,5 +1,6 @@
 const std = @import("std");
 const linear = @import("linear.zig");
+const material = @import("material.zig");
 const ray = @import("ray.zig");
 
 pub const white = linear.Color3.initN(1, 1, 1);
@@ -25,6 +26,8 @@ pub fn Camera(
         defocus_angle: f64,
         defocus_disk_u: linear.Vec3,
         defocus_disk_v: linear.Vec3,
+        // todo: this should not be in Camera
+        materials: *const std.StringHashMap(material.Material),
 
         pub const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
         pub const image_width: comptime_int = _image_width;
@@ -40,7 +43,7 @@ pub fn Camera(
                     var pixel_color = linear.Color3.initN(0, 0, 0);
                     for (0..samples_per_pixel) |_| {
                         const _ray = camera.get_ray(rand, i, j);
-                        pixel_color.accumulate(ray_color(rand, max_depth, _ray, world));
+                        pixel_color.accumulate(camera.ray_color(rand, max_depth, _ray, world));
                     }
 
                     set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
@@ -56,6 +59,7 @@ pub fn Camera(
             v_up: linear.Vec3,
             defocus_angle: f64,
             focus_dist: f64,
+            materials: *const std.StringHashMap(material.Material),
         ) Self {
             // const focal_length = look_from.sub(look_at).length();
             const theta = std.math.degreesToRadians(vfov);
@@ -93,6 +97,7 @@ pub fn Camera(
                 .defocus_angle = defocus_angle,
                 .defocus_disk_u = defocus_disk_u,
                 .defocus_disk_v = defocus_disk_v,
+                .materials = materials,
             };
             return camera;
         }
@@ -111,17 +116,17 @@ pub fn Camera(
             return .{ .orig = ray_origin, .dir = ray_direction };
         }
 
-        pub fn ray_color(rand: std.Random, depth: u64, _ray: ray.Ray3, hittable: ray.Hittable) linear.Color3 {
+        pub fn ray_color(camera: Self, rand: std.Random, depth: u64, _ray: ray.Ray3, hittable: ray.Hittable) linear.Color3 {
             // If we've exceeded the ray bounce limit, no more light is gathered.
             if (depth <= 0)
                 return linear.Color3.initN(0, 0, 0);
 
-            if (hittable.hit(_ray, ray.Interval{ .min = 0.001, .max = std.math.floatMax(f64) })) |hit_record| {
+            if (hittable.hit(camera.materials, _ray, ray.Interval{ .min = 0.001, .max = std.math.floatMax(f64) })) |hit_record| {
                 // TODO: consider zero
                 var attenuation: linear.Color3 = undefined;
                 const might_scattered = hit_record.mat.scatter(rand, _ray, hit_record, &attenuation);
                 if (might_scattered) |scattered| {
-                    return ray_color(rand, depth - 1, scattered, hittable).mul(attenuation);
+                    return camera.ray_color(rand, depth - 1, scattered, hittable).mul(attenuation);
                 }
                 return black;
             }
