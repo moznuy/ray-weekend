@@ -20,32 +20,36 @@ pub fn main() !void {
     const samples_per_pixel: comptime_int = 100;
 
     // Materials
-    const material_ground = material.Material{
+    var materials = std.StringHashMap(material.Material).init(gpa.allocator());
+    defer materials.deinit();
+
+    try materials.put("ground", .{
         .lambertian = .{
             .albedo = linear.Color3.initN(0.8, 0.8, 0.0),
         },
-    };
-    const material_center = material.Material{
+    });
+    try materials.put("center", .{
         .lambertian = .{
             .albedo = linear.Color3.initN(0.1, 0.2, 0.5),
         },
-    };
-    const material_left = material.Material{
+    });
+    try materials.put("left", .{
         .dielectric = .{
             .refraction_index = 1.5,
         },
-    };
-    const material_bubble = material.Material{
+    });
+    try materials.put("bubble", .{
         .dielectric = .{
             .refraction_index = 1.0 / 1.5,
         },
-    };
-    const material_right = material.Material{
+    });
+    try materials.put("right", .{
         .metal = .{
             .albedo = linear.Color3.initN(0.8, 0.6, 0.2),
             .fuzz = 1.0,
         },
-    };
+    });
+
     // const material_left = material.Material{
     //     .lambertian = .{
     //         .albedo = linear.Color3.initN(0, 0, 1),
@@ -80,27 +84,27 @@ pub fn main() !void {
     world.many.appendAssumeCapacity(.{ .sphere = .{
         .center = linear.Point3.initN(0, -100.5, -1),
         .radius = 100,
-        .mat = &material_ground,
+        .mat = materials.getPtr("ground") orelse unreachable,
     } });
     world.many.appendAssumeCapacity(.{ .sphere = .{
         .center = linear.Point3.initN(0, 0, -1.2),
         .radius = 0.5,
-        .mat = &material_center,
+        .mat = materials.getPtr("center") orelse unreachable,
     } });
     world.many.appendAssumeCapacity(.{ .sphere = .{
         .center = linear.Point3.initN(-1.0, 0, -1.0),
         .radius = 0.5,
-        .mat = &material_left,
+        .mat = materials.getPtr("left") orelse unreachable,
     } });
     world.many.appendAssumeCapacity(.{ .sphere = .{
         .center = linear.Point3.initN(-1.0, 0, -1.0),
         .radius = 0.4,
-        .mat = &material_bubble,
+        .mat = materials.getPtr("bubble") orelse unreachable,
     } });
     world.many.appendAssumeCapacity(.{ .sphere = .{
         .center = linear.Point3.initN(1.0, 0, -1.0),
         .radius = 0.5,
-        .mat = &material_right,
+        .mat = materials.getPtr("right") orelse unreachable,
     } });
 
     // Random
