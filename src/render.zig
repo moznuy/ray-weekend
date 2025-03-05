@@ -7,13 +7,11 @@ pub const white = linear.Color3.initN(1, 1, 1);
 pub const blue = linear.Color3.initN(0.5, 0.7, 1);
 pub const black = linear.Color3.initN(0, 0, 0);
 
-// TODO: investigate how to init threadlocal once per thread
-fn init_prng() void {
-    prng = std.Random.DefaultPrng.init(@as(u64, @intCast(std.time.milliTimestamp())) + std.Thread.Id * 1000);
-}
-// var init_prng_once = std.once(init_prng);
 threadlocal var prng: std.Random.DefaultPrng = undefined;
 threadlocal var init_prng_once = std.once(init_prng);
+fn init_prng() void {
+    prng = std.Random.DefaultPrng.init(@as(u64, @intCast(std.time.milliTimestamp())) + std.Thread.getCurrentId() * 1000);
+}
 
 pub fn Camera(
     aspect_ration: comptime_float,
@@ -44,13 +42,9 @@ pub fn Camera(
         const Self = @This();
 
         pub fn render(camera: Self, world: ray.Hittable, data: []u8, line: usize, lines_to_do: *std.atomic.Value(u64)) void {
-            // init_prng_once.call();
-            var prngg = std.Random.DefaultPrng.init(@as(u64, @intCast(std.time.milliTimestamp())) + line * 1000);
-            const rand = prngg.random();
-            // const lines_to_do = end_line - start_line;
-            // std.debug.print("Render from {} to {}; todo: {}\n", .{ start_line, end_line, lines_to_do });
+            init_prng_once.call();
+            const rand = prng.random();
             const i = line;
-            // std.debug.print("\rScanlines remaining: {d:04}", .{lines_to_do - (i - start_line)});
             for (0..image_width) |j| {
                 var pixel_color = linear.Color3.initN(0, 0, 0);
                 for (0..samples_per_pixel) |_| {
@@ -61,7 +55,6 @@ pub fn Camera(
                 set_color(data, pixel_color.scale(pixel_samples_scale), i, j, image_width, num_components);
             }
             _ = lines_to_do.fetchSub(1, .release);
-            // std.debug.print("\n", .{});
         }
 
         pub fn init(
@@ -73,7 +66,6 @@ pub fn Camera(
             focus_dist: f64,
             materials: *const std.StringHashMap(material.Material),
         ) Self {
-            // const focal_length = look_from.sub(look_at).length();
             const theta = std.math.degreesToRadians(vfov);
             const h = std.math.tan(theta / 2.0);
             const viewport_height = 2.0 * h * focus_dist;
@@ -116,7 +108,6 @@ pub fn Camera(
         pub fn get_ray(camera: Self, rand: std.Random, i: usize, j: usize) ray.Ray3 {
             // Construct a camera ray originating from the defocus disk and directed at a randomly
             // sampled point around the pixel location i, j.
-
             const offset = sample_square(rand);
             const pixel_sample = camera.pixel00_loc
                 .add(camera.pixel_delta_u.scale(@as(f64, @floatFromInt(j)) + offset.x()))

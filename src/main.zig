@@ -186,9 +186,9 @@ pub fn main() !void {
     // Camera
     const CameraType = render.Camera(
         16.0 / 9.0,
-        1200,
+        400,
         3,
-        500,
+        100,
         50,
     );
     // const camera = CameraType.init(
@@ -221,13 +221,11 @@ pub fn main() !void {
     var lines_to_do: std.atomic.Value(u64) = undefined;
     lines_to_do.store(CameraType.image_height, .release);
     const progress_thread = try std.Thread.spawn(.{}, progress, .{&lines_to_do});
-    _ = progress_thread; // autofix
     for (0..CameraType.image_height) |line| {
-        // TODO: spawn per line
         try pool.spawn(CameraType.render, .{ camera, world, &data, line, &lines_to_do });
     }
     pool.deinit();
-    // progress_thread.join();
+    progress_thread.join();
 
     // Save
     zstbi.init(gpa.allocator());

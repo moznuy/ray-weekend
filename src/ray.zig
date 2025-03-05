@@ -100,7 +100,7 @@ pub const Hittable = union(HittableTag) {
                 return .{
                     .t = t,
                     .p = p,
-                    .mat = materials.getPtr(sphere.mat_name) orelse @panic("Material not found"),
+                    .mat = materials.getPtr(sphere.mat_name) orelse &err_mat,
                     .normal = normal,
                     .front_face = front_face,
                 };
