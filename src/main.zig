@@ -5,24 +5,10 @@ const material = @import("material.zig");
 const render = @import("render.zig");
 const zstbi = @import("zstbi");
 
-pub fn main() !void {
-    // Allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer {
-        const deinit_status = gpa.deinit();
-        //fail test; can't try in defer as defer is executed after we return
-        if (deinit_status == .leak) std.debug.print("Leak detected!", .{});
-    }
-
-    // Image
-    const aspect_ration: comptime_float = 16.0 / 9.0;
-    const image_width: comptime_int = 400;
-    const samples_per_pixel: comptime_int = 100;
-
-    // Materials
-    var materials = std.StringHashMap(material.Material).init(gpa.allocator());
-    defer materials.deinit();
-
+fn sample_scene(
+    materials: *std.StringHashMap(material.Material),
+    world_hittables: *ray.Hittable,
+) !void {
     try materials.put("ground", .{
         .lambertian = .{
             .albedo = linear.Color3.initN(0.8, 0.8, 0.0),
@@ -50,62 +36,56 @@ pub fn main() !void {
         },
     });
 
-    // const material_left = material.Material{
-    //     .lambertian = .{
-    //         .albedo = linear.Color3.initN(0, 0, 1),
-    //     },
-    // };
-    // const material_right = material.Material{
-    //     .lambertian = .{
-    //         .albedo = linear.Color3.initN(1, 0, 0),
-    //     },
-    // };
-
-    // World
-    const _hittables = try std.ArrayList(ray.Hittable).initCapacity(gpa.allocator(), 5);
-    defer _hittables.deinit();
-
-    var world = ray.Hittable{ .many = _hittables };
-    // const R = std.math.cos(std.math.pi / 4.0);
-    // world.many.appendAssumeCapacity(.{
-    //     .sphere = .{
-    //         .center = linear.Point3.initN(-R, 0, -1),
-    //         .radius = R,
-    //         .mat = &material_left,
-    //     },
-    // });
-    // world.many.appendAssumeCapacity(.{
-    //     .sphere = .{
-    //         .center = linear.Point3.initN(R, 0, -1),
-    //         .radius = R,
-    //         .mat = &material_right,
-    //     },
-    // });
-    world.many.appendAssumeCapacity(.{ .sphere = .{
+    try world_hittables.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(0, -100.5, -1),
         .radius = 100,
         .mat = materials.getPtr("ground") orelse unreachable,
     } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{
+    try world_hittables.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(0, 0, -1.2),
         .radius = 0.5,
         .mat = materials.getPtr("center") orelse unreachable,
     } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{
+    try world_hittables.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(-1.0, 0, -1.0),
         .radius = 0.5,
         .mat = materials.getPtr("left") orelse unreachable,
     } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{
+    try world_hittables.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(-1.0, 0, -1.0),
         .radius = 0.4,
         .mat = materials.getPtr("bubble") orelse unreachable,
     } });
-    world.many.appendAssumeCapacity(.{ .sphere = .{
+    try world_hittables.many.append(.{ .sphere = .{
         .center = linear.Point3.initN(1.0, 0, -1.0),
         .radius = 0.5,
         .mat = materials.getPtr("right") orelse unreachable,
     } });
+}
+
+pub fn main() !void {
+    // Allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const deinit_status = gpa.deinit();
+        //fail test; can't try in defer as defer is executed after we return
+        if (deinit_status == .leak) std.debug.print("Leak detected!\n", .{});
+    }
+
+    // Image
+    const aspect_ration: comptime_float = 16.0 / 9.0;
+    const image_width: comptime_int = 400;
+    const samples_per_pixel: comptime_int = 100;
+
+    // Materials
+    var materials = std.StringHashMap(material.Material).init(gpa.allocator());
+    defer materials.deinit();
+
+    // World
+    const _hittables = std.ArrayList(ray.Hittable).init(gpa.allocator());
+    defer _hittables.deinit();
+    var world = ray.Hittable{ .many = _hittables };
+    try sample_scene(&materials, &world);
 
     // Random
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
