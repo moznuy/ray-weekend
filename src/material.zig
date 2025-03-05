@@ -29,7 +29,7 @@ pub const Material = union(MaterialTag) {
         // _ = attenuation;
         switch (self) {
             .lambertian => |lambertian| {
-                var scatter_direction = hit_record.normal.add(linear.Vec3.random_unit_vector(rand));
+                var scatter_direction = hit_record.normal.add(linear.random_unit_vector(rand));
                 // Catch degenerate scatter direction
                 if (scatter_direction.near_zero()) {
                     scatter_direction = hit_record.normal;
@@ -40,7 +40,7 @@ pub const Material = union(MaterialTag) {
             },
             .metal => |metal| {
                 const reflected_base = ray_in.dir.reflect(hit_record.normal);
-                const reflected = reflected_base.unit().add(linear.Vec3.random_unit_vector(rand).scale(metal.fuzz));
+                const reflected = reflected_base.unit().add(linear.random_unit_vector(rand).scale(metal.fuzz));
                 const scattered = ray.Ray3{ .orig = hit_record.p, .dir = reflected };
                 attenuation.* = metal.albedo;
                 if (scattered.dir.dot(hit_record.normal) > 0) {

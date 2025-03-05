@@ -109,42 +109,55 @@ pub const Vec3 = struct {
         const s = 1e-8;
         return @abs(self.e[0]) < s and @abs(self.e[1]) < s and @abs(self.e[2]) < s;
     }
-
-    pub fn random(rand: std.Random) Self {
-        return .{ .e = [_]f64{
-            rand.float(f64),
-            rand.float(f64),
-            rand.float(f64),
-        } };
-    }
-
-    pub fn random_range(rand: std.Random, min: f64, max: f64) Self {
-        return .{ .e = [_]f64{
-            random_double_range(rand, min, max),
-            random_double_range(rand, min, max),
-            random_double_range(rand, min, max),
-        } };
-    }
-
-    pub fn random_unit_vector(rand: std.Random) Self {
-        while (true) {
-            const p = Self.random_range(rand, -1, 1);
-            const lensq = p.length_squred();
-            if (1e-160 < lensq and lensq <= 1) {
-                return p.scale(1 / @sqrt(lensq));
-            }
-        }
-    }
-
-    pub fn random_on_hemisphere(rand: std.Random, normal: Self) Self {
-        const on_unit_sphere = Self.random_unit_vector(rand);
-        if (on_unit_sphere.dot(normal) > 0.0) {
-            return on_unit_sphere;
-        } else {
-            return on_unit_sphere.negate();
-        }
-    }
 };
+
+pub fn random_vec(rand: std.Random) Vec3 {
+    return .{ .e = [_]f64{
+        rand.float(f64),
+        rand.float(f64),
+        rand.float(f64),
+    } };
+}
+
+pub fn random_vec_range(rand: std.Random, min: f64, max: f64) Vec3 {
+    return .{ .e = [_]f64{
+        random_double_range(rand, min, max),
+        random_double_range(rand, min, max),
+        random_double_range(rand, min, max),
+    } };
+}
+
+pub fn random_unit_vector(rand: std.Random) Vec3 {
+    while (true) {
+        const p = random_vec_range(rand, -1, 1);
+        const lensq = p.length_squred();
+        if (1e-160 < lensq and lensq <= 1) {
+            return p.scale(1 / @sqrt(lensq));
+        }
+    }
+}
+
+pub fn random_on_hemisphere(rand: std.Random, normal: Vec3) Vec3 {
+    const on_unit_sphere = random_unit_vector(rand);
+    if (on_unit_sphere.dot(normal) > 0.0) {
+        return on_unit_sphere;
+    } else {
+        return on_unit_sphere.negate();
+    }
+}
+
+pub fn random_in_unit_disk(rand: std.Random) Vec3 {
+    while (true) {
+        const p = Vec3.initN(
+            random_double_range(rand, -1, 1),
+            random_double_range(rand, -1, 1),
+            0,
+        );
+        if (p.length_squred() < 1) {
+            return p;
+        }
+    }
+}
 
 inline fn random_double_range(rand: std.Random, min: f64, max: f64) f64 {
     // Returns a random real in [min,max).

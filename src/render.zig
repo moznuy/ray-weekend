@@ -17,11 +17,14 @@ pub fn Camera(
     const max_depth: comptime_int = 50;
 
     return struct {
+        rand: std.Random,
         center: linear.Point3,
         pixel00_loc: linear.Point3,
         pixel_delta_u: linear.Vec3,
         pixel_delta_v: linear.Vec3,
-        rand: std.Random,
+        defocus_angle: f64,
+        defocus_disk_u: linear.Vec3,
+        defocus_disk_v: linear.Vec3,
 
         pub const image_height: comptime_int = if (image_height_tmp < 0) 1 else image_height_tmp;
         pub const image_width: comptime_int = _image_width;
@@ -36,7 +39,7 @@ pub fn Camera(
                 for (0..image_width) |j| {
                     var pixel_color = linear.Color3.initN(0, 0, 0);
                     for (0..samples_per_pixel) |_| {
-                        const _ray = camera.get_ray(i, j);
+                        const _ray = camera.get_ray(rand, i, j);
                         pixel_color.accumulate(ray_color(rand, max_depth, _ray, world));
                     }
 
@@ -51,11 +54,13 @@ pub fn Camera(
             look_from: linear.Point3,
             look_at: linear.Point3,
             v_up: linear.Vec3,
+            defocus_angle: f64,
+            focus_dist: f64,
         ) Self {
-            const focal_length = look_from.sub(look_at).length();
+            // const focal_length = look_from.sub(look_at).length();
             const theta = std.math.degreesToRadians(vfov);
             const h = std.math.tan(theta / 2.0);
-            const viewport_height = 2.0 * h * focal_length;
+            const viewport_height = 2.0 * h * focus_dist;
             const viewport_width = viewport_height * (@as(comptime_float, @floatFromInt(image_width)) / @as(comptime_float, @floatFromInt(image_height)));
 
             const w = look_from.sub(look_at).unit();
@@ -70,27 +75,37 @@ pub fn Camera(
 
             const center = look_from;
             const viewport_upper_left = center
-                .sub(w.scale(focal_length))
+                .sub(w.scale(focus_dist))
                 .sub(viewport_u.scale(0.5))
                 .sub(viewport_v.scale(0.5));
             const pixel00_loc = viewport_upper_left.add(pixel_delta_u.add(pixel_delta_v).scale(0.5));
 
+            const defocus_radius = focus_dist * std.math.tan(std.math.degreesToRadians(defocus_angle / 2.0));
+            const defocus_disk_u = u.scale(defocus_radius);
+            const defocus_disk_v = v.scale(defocus_radius);
+
             const camera = Self{
+                .rand = rand,
                 .center = center,
                 .pixel00_loc = pixel00_loc,
                 .pixel_delta_u = pixel_delta_u,
                 .pixel_delta_v = pixel_delta_v,
-                .rand = rand,
+                .defocus_angle = defocus_angle,
+                .defocus_disk_u = defocus_disk_u,
+                .defocus_disk_v = defocus_disk_v,
             };
             return camera;
         }
 
-        pub fn get_ray(camera: Self, i: usize, j: usize) ray.Ray3 {
+        pub fn get_ray(camera: Self, rand: std.Random, i: usize, j: usize) ray.Ray3 {
+            // Construct a camera ray originating from the defocus disk and directed at a randomly
+            // sampled point around the pixel location i, j.
+
             const offset = sample_square(camera.rand);
             const pixel_sample = camera.pixel00_loc
                 .add(camera.pixel_delta_u.scale(@as(f64, @floatFromInt(j)) + offset.x()))
                 .add(camera.pixel_delta_v.scale(@as(f64, @floatFromInt(i)) + offset.y()));
-            const ray_origin = camera.center;
+            const ray_origin = if (camera.defocus_angle <= 0) camera.center else camera.sample_defocus_disk(rand);
             const ray_direction = pixel_sample.sub(ray_origin);
 
             return .{ .orig = ray_origin, .dir = ray_direction };
@@ -116,6 +131,17 @@ pub fn Camera(
 
             return white.scale(1.0 - a).add(blue.scale(a));
         }
+
+        fn sample_square(rand: std.Random) linear.Vec3 {
+            // Returns the vector to a random point in the [-.5,-.5]-[+.5,+.5] unit square.
+            return linear.Vec3.initN(rand.float(f64) - 0.5, rand.float(f64) - 0.5, 0);
+        }
+
+        fn sample_defocus_disk(camera: Self, rand: std.Random) linear.Vec3 {
+            // Returns a random point in the camera defocus disk.
+            const p = linear.random_in_unit_disk(rand);
+            return camera.center.add(camera.defocus_disk_u.scale(p.e[0])).add(camera.defocus_disk_v.scale(p.e[1]));
+        }
     };
 }
 
@@ -140,9 +166,4 @@ inline fn set_color(data: []u8, pixel_color: linear.Color3, i: usize, j: usize, 
     data[(i * image_width + j) * num_components] = rb;
     data[(i * image_width + j) * num_components + 1] = gb;
     data[(i * image_width + j) * num_components + 2] = bb;
-}
-
-fn sample_square(rand: std.Random) linear.Vec3 {
-    // Returns the vector to a random point in the [-.5,-.5]-[+.5,+.5] unit square.
-    return linear.Vec3.initN(rand.float(f64) - 0.5, rand.float(f64) - 0.5, 0);
 }

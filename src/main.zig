@@ -120,6 +120,8 @@ pub fn main() !void {
         linear.Point3.initN(-2.0, 2.0, 1.0),
         linear.Point3.initN(0.0, 0.0, -1.0),
         linear.Vec3.initN(0.0, 1.0, 0.0),
+        10.0,
+        3.4,
     );
 
     // Data
