@@ -8,7 +8,7 @@ const zstbi = @import("zstbi");
 fn sample_scene(
     materials: *std.StringHashMap(material.Material),
     world: *ray.Hittable,
-) !void {
+) !render.Camera {
     try materials.put("ground", .{
         .lambertian = .{
             .albedo = linear.Color3.initN(0.8, 0.8, 0.0),
@@ -61,13 +61,28 @@ fn sample_scene(
         .radius = 0.5,
         .mat_name = "right",
     } });
+
+    const image_params = render.ImageParams.init(16.0 / 9.0, 400);
+    const camera = render.Camera.init(
+        20,
+        linear.Point3.initN(-2.0, 2.0, 1.0),
+        linear.Point3.initN(0.0, 0.0, -1.0),
+        linear.Vec3.initN(0.0, 1.0, 0.0),
+        10.0,
+        3.4,
+        100,
+        50,
+        image_params,
+        materials,
+    );
+    return camera;
 }
 
 fn final_scene(
     materials: *std.StringHashMap(material.Material),
     world: *ray.Hittable,
     allocator: std.mem.Allocator,
-) !void {
+) !render.Camera {
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
     const rand = prng.random();
 
@@ -147,6 +162,21 @@ fn final_scene(
         .radius = 1.0,
         .mat_name = "big-sphere3",
     } });
+
+    const image_params = render.ImageParams.init(16.0 / 9.0, 400);
+    const camera = render.Camera.init(
+        20,
+        linear.Point3.initN(13, 2.0, 3.0),
+        linear.Point3.initN(0.0, 0.0, 0.0),
+        linear.Vec3.initN(0.0, 1.0, 0.0),
+        0.6,
+        10,
+        100,
+        50,
+        image_params,
+        materials,
+    );
+    return camera;
 }
 
 fn progress(lines_to_do: *std.atomic.Value(u64)) void {
@@ -164,84 +194,73 @@ fn progress(lines_to_do: *std.atomic.Value(u64)) void {
 pub fn main() !void {
     // Allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
     defer {
         const deinit_status = gpa.deinit();
         //fail test; can't try in defer as defer is executed after we return
         if (deinit_status == .leak) std.debug.print("Leak detected!\n", .{});
     }
 
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+    if (args.len < 2) {
+        std.debug.print("Usage: <program> <scene>\n", .{});
+        return error.Usage;
+    }
+    const scene = args[1];
+
     // Materials
-    var materials = std.StringHashMap(material.Material).init(gpa.allocator());
+    var materials = std.StringHashMap(material.Material).init(allocator);
     defer materials.deinit();
 
     // World
-    const _hittables = std.ArrayList(ray.Hittable).init(gpa.allocator());
+    const _hittables = std.ArrayList(ray.Hittable).init(allocator);
     var world = ray.Hittable{ .many = _hittables };
     defer world.many.deinit();
 
-    // try sample_scene(&materials, &world);
-
-    var mat_names_buf: [4096]u8 = undefined;
-    var mat_name_allocator = std.heap.FixedBufferAllocator.init(&mat_names_buf);
-    try final_scene(&materials, &world, mat_name_allocator.allocator());
+    const camera = blk: {
+        if (std.mem.eql(u8, scene, "sample")) {
+            break :blk try sample_scene(&materials, &world);
+        } else if (std.mem.eql(u8, scene, "final")) {
+            // var mat_names_buf: [4096]u8 = undefined;
+            // var mat_name_allocator = std.heap.FixedBufferAllocator.init(&mat_names_buf);
+            break :blk try final_scene(&materials, &world, allocator);
+        } else {
+            return error.InvalidScene;
+        }
+    };
 
     materials.lockPointers();
     defer materials.unlockPointers();
 
-    // Camera
-    const CameraType = render.Camera(
-        16.0 / 9.0,
-        400,
-        3,
-        100,
-        50,
-    );
-    // const camera = CameraType.init(
-    //     20,
-    //     linear.Point3.initN(-2.0, 2.0, 1.0),
-    //     linear.Point3.initN(0.0, 0.0, -1.0),
-    //     linear.Vec3.initN(0.0, 1.0, 0.0),
-    //     10.0,
-    //     3.4,
-    //     &materials,
-    // );
-    const camera = CameraType.init(
-        20,
-        linear.Point3.initN(13, 2.0, 3.0),
-        linear.Point3.initN(0.0, 0.0, 0.0),
-        linear.Vec3.initN(0.0, 1.0, 0.0),
-        0.6,
-        10,
-        &materials,
-    );
-
     // Data
-    var data: [CameraType.image_width * CameraType.image_height * CameraType.num_components]u8 = undefined;
-    @memset(&data, 0);
+    const data = try allocator.alloc(u8, camera.image_params.bytes_needed);
+    defer allocator.free(data);
+    @memset(data, 0);
 
     // Render
     // camera.render(world, &data, 0, 1);
     var pool: std.Thread.Pool = undefined;
-    try pool.init(.{ .allocator = gpa.allocator() });
+    try pool.init(.{ .allocator = allocator });
     var lines_to_do: std.atomic.Value(u64) = undefined;
-    lines_to_do.store(CameraType.image_height, .monotonic);
+    lines_to_do.store(camera.image_params.image_height, .monotonic);
     const progress_thread = try std.Thread.spawn(.{}, progress, .{&lines_to_do});
-    for (0..CameraType.image_height) |line| {
-        try pool.spawn(CameraType.render, .{ camera, world, &data, line, &lines_to_do });
+    for (0..camera.image_params.image_height) |line| {
+        try pool.spawn(render.Camera.render, .{ camera, world, data, line, &lines_to_do });
     }
     pool.deinit();
     progress_thread.join();
 
     // Save
-    zstbi.init(gpa.allocator());
+    zstbi.init(allocator);
     defer zstbi.deinit();
     const image: zstbi.Image = .{
-        .data = &data,
-        .width = CameraType.image_width,
-        .height = CameraType.image_height,
-        .num_components = CameraType.num_components,
-        .bytes_per_component = CameraType.bytes_per_component,
-        .bytes_per_row = CameraType.image_width * CameraType.num_components * CameraType.bytes_per_component,
+        .data = data,
+        .width = camera.image_params.image_width,
+        .height = camera.image_params.image_height,
+        .num_components = camera.image_params.num_components,
+        .bytes_per_component = camera.image_params.bytes_per_component,
+        .bytes_per_row = camera.image_params.image_width * camera.image_params.num_components * camera.image_params.bytes_per_component,
         .is_hdr = false,
     };
     try image.writeToFile("image.png", .png);
