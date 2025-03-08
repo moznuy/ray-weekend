@@ -3,7 +3,9 @@ const linear = @import("linear.zig");
 const ray = @import("ray.zig");
 const material = @import("material.zig");
 const render = @import("render.zig");
+const SafeQueue = @import("SafeQueue");
 const zstbi = @import("zstbi");
+const config = @import("config");
 
 fn sample_scene(
     materials: *std.StringHashMap(material.Material),
@@ -238,15 +240,36 @@ pub fn main() !void {
     defer allocator.free(data);
     @memset(data, 0);
 
+    var queue = SafeQueue.init(allocator);
+    defer queue.deinit();
+
+    std.debug.print("Compiled with live({})\n", .{config.live});
+    if (!config.live) {
+        try do_render(allocator, camera, world, data, &queue);
+        return;
+    }
+    const render_thread = try std.Thread.spawn(.{}, do_render, .{ allocator, camera, world, data, &queue });
+    defer render_thread.join();
+
+    const live = @import("live");
+    // std.debug.print("{} {}\n", .{ camera.image_params.image_width, camera.image_params.image_height });
+    try live.do_live(allocator, data, &queue);
+}
+
+fn do_render(allocator: std.mem.Allocator, camera: render.Camera, world: ray.Hittable, data: []u8, queue: *SafeQueue) !void {
     // Render
     // camera.render(world, &data, 0, 1);
     var pool: std.Thread.Pool = undefined;
-    try pool.init(.{ .allocator = allocator });
+    try pool.init(.{
+        .allocator = allocator,
+        .n_jobs = @intCast(try std.Thread.getCpuCount() * 2 / 3),
+    });
     var lines_to_do: std.atomic.Value(u64) = undefined;
     lines_to_do.store(camera.image_params.image_height, .monotonic);
     const progress_thread = try std.Thread.spawn(.{}, progress, .{&lines_to_do});
-    for (0..camera.image_params.image_height) |line| {
-        try pool.spawn(render.Camera.render, .{ camera, world, data, line, &lines_to_do });
+    const height = camera.image_params.image_height;
+    for (0..height) |line| {
+        try pool.spawn(render.Camera.render, .{ camera, world, data, height - line - 1, &lines_to_do, queue });
     }
     pool.deinit();
     progress_thread.join();
@@ -264,6 +287,4 @@ pub fn main() !void {
         .is_hdr = false,
     };
     try image.writeToFile("image.png", .png);
-
-    std.debug.print("\nDone.\n", .{});
 }

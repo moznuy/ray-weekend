@@ -1,4 +1,5 @@
 const std = @import("std");
+const SafeQueue = @import("SafeQueue");
 const linear = @import("linear.zig");
 const material = @import("material.zig");
 const ray = @import("ray.zig");
@@ -117,7 +118,7 @@ pub const Camera = struct {
         return camera;
     }
 
-    pub fn render(camera: Self, world: ray.Hittable, data: []u8, line: usize, lines_to_do: *std.atomic.Value(u64)) void {
+    pub fn render(camera: Self, world: ray.Hittable, data: []u8, line: usize, lines_to_do: *std.atomic.Value(u64), queue: *SafeQueue) void {
         init_prng_once.call();
         const rand = prng.random();
         const i = line;
@@ -131,6 +132,7 @@ pub const Camera = struct {
             set_color(data, pixel_color.scale(camera.pixel_samples_scale), i, j, camera.image_params.image_width, camera.image_params.num_components);
         }
         _ = lines_to_do.fetchSub(1, .monotonic);
+        queue.push(line) catch @panic("OOM");
     }
 
     fn get_ray(camera: Self, rand: std.Random, i: usize, j: usize) ray.Ray3 {
